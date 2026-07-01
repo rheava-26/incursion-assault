@@ -1,0 +1,9 @@
+# OS / editor cruft
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.swp
+*~
+
+# Claude local-only settings (keep launch.json, ignore machine-specific settings)
+.claude/settings.local.json

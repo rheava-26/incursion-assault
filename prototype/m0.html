@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Incursion Assault — M0 (deck + camera)</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1622;
+    font-family: "Segoe UI", system-ui, sans-serif; color: #cfe0f0; }
+  canvas { display: block; }
+  #hud { position: fixed; top: 14px; left: 14px; pointer-events: none;
+    background: rgba(10,20,32,0.55); border: 1px solid rgba(120,160,200,0.25);
+    border-radius: 8px; padding: 12px 14px; max-width: 320px; line-height: 1.45; }
+  #hud h1 { margin: 0 0 6px; font-size: 15px; letter-spacing: .3px; }
+  #hud .sub { color: #7f9bb5; font-size: 12px; margin-bottom: 8px; }
+  #hud .row { font-size: 12px; color: #9fb6cc; }
+  #hud kbd { background: #1c2c3e; border: 1px solid #2f465e; border-radius: 4px;
+    padding: 1px 6px; font-size: 11px; color: #d6e6f5; }
+  #coords { position: fixed; bottom: 14px; left: 14px; font-size: 12px;
+    color: #35d0ff; background: rgba(10,20,32,0.55); padding: 6px 10px;
+    border-radius: 6px; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="hud">
+  <h1>Incursion Assault — M0</h1>
+  <div class="sub">One deck · orthographic 2.5D camera · raycast cursor</div>
+  <div class="row"><kbd>Left-drag</kbd> tilt / orbit the camera</div>
+  <div class="row"><kbd>Scroll</kbd> zoom &nbsp; <kbd>T</kbd> top-down &nbsp; <kbd>R</kbd> reset view</div>
+  <div class="row" style="margin-top:6px; color:#6f8aa3;">Move the mouse over the deck — the cyan
+    marker is the exact build point (no grid).</div>
+</div>
+<div id="coords">cursor: —</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0b1622);
+
+  // --- Orthographic camera (true 3D, flat projection) ---
+  let frustum = 70;
+  let aspect = window.innerWidth / window.innerHeight;
+  const camera = new THREE.OrthographicCamera(
+    -frustum * aspect / 2, frustum * aspect / 2,
+    frustum / 2, -frustum / 2, 0.1, 2000);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  // --- Lighting: warm key + cool ambient = the "shaded" Roblox-ish look ---
+  scene.add(new THREE.AmbientLight(0x8ea6c0, 0.75));
+  const key = new THREE.DirectionalLight(0xffe9c8, 1.15);
+  key.position.set(50, 90, 35);
+  scene.add(key);
+  const fill = new THREE.DirectionalLight(0x6f8db0, 0.35);
+  fill.position.set(-40, 30, -30);
+  scene.add(fill);
+
+  // --- Sea plane (context for the 2.5D depth) ---
+  const sea = new THREE.Mesh(
+    new THREE.PlaneGeometry(800, 800),
+    new THREE.MeshStandardMaterial({ color: 0x143049, roughness: 1, metalness: 0 }));
+  sea.rotation.x = -Math.PI / 2;
+  sea.position.y = -6.5;
+  scene.add(sea);
+
+  // --- Boat hull outline (a Polygon2D, foreshadowing the zone editor) ---
+  // Built in XY, then extruded for thickness and laid flat into the XZ plane.
+  const hull = new THREE.Shape();
+  hull.moveTo(-32, -8);
+  hull.lineTo(18, -8);
+  hull.lineTo(32, 0);    // bow point
+  hull.lineTo(18, 8);
+  hull.lineTo(-32, 8);
+  hull.lineTo(-34, 0);   // stern
+  hull.closePath();
+
+  const hullGeo = new THREE.ExtrudeGeometry(hull, {
+    depth: 6, bevelEnabled: true, bevelThickness: 0.7, bevelSize: 0.7, bevelSegments: 1 });
+  const deckMat = new THREE.MeshStandardMaterial({
+    color: 0xb8b1a0, roughness: 0.85, metalness: 0.05, flatShading: true });
+  const deck = new THREE.Mesh(hullGeo, deckMat);
+  deck.rotation.x = -Math.PI / 2;   // lay flat: length on X, beam on Z
+  deck.position.y = -6;             // top surface sits at y = 0
+  scene.add(deck);
+
+  // Outline the deck edge (hint of the draggable zone boundary to come)
+  const edges = new THREE.LineSegments(
+    new THREE.EdgesGeometry(hullGeo, 25),
+    new THREE.LineBasicMaterial({ color: 0x35506b }));
+  edges.rotation.x = -Math.PI / 2;
+  edges.position.y = -6;
+  scene.add(edges);
+
+  // --- Cursor marker (the exact, grid-free build point) ---
+  const dot = new THREE.Mesh(
+    new THREE.SphereGeometry(0.9, 20, 20),
+    new THREE.MeshBasicMaterial({ color: 0x35d0ff }));
+  dot.visible = false;
+  scene.add(dot);
+
+  // --- Camera orbit state (spherical around a fixed pivot) ---
+  const pivot = new THREE.Vector3(0, 0, 0);
+  let azimuth = 0.6, polar = 0.5, radius = 300;
+  function updateCamera() {
+    camera.position.set(
+      pivot.x + radius * Math.sin(polar) * Math.sin(azimuth),
+      pivot.y + radius * Math.cos(polar),
+      pivot.z + radius * Math.sin(polar) * Math.cos(azimuth));
+    camera.up.set(0, 1, 0);
+    camera.lookAt(pivot);
+  }
+  function updateProjection() {
+    aspect = window.innerWidth / window.innerHeight;
+    camera.left = -frustum * aspect / 2; camera.right = frustum * aspect / 2;
+    camera.top = frustum / 2; camera.bottom = -frustum / 2;
+    camera.updateProjectionMatrix();
+  }
+
+  // --- Input ---
+  const ray = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+  const coordsEl = document.getElementById('coords');
+  let dragging = false, lastX = 0, lastY = 0;
+
+  renderer.domElement.addEventListener('pointerdown', function (e) {
+    if (e.button === 0) { dragging = true; lastX = e.clientX; lastY = e.clientY; }
+  });
+  window.addEventListener('pointerup', function () { dragging = false; });
+  window.addEventListener('pointermove', function (e) {
+    mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+    if (dragging) {
+      azimuth -= (e.clientX - lastX) * 0.006;
+      polar   -= (e.clientY - lastY) * 0.006;
+      polar = Math.max(0.001, Math.min(1.5, polar)); // top-down .. near side-on
+      lastX = e.clientX; lastY = e.clientY;
+    }
+  });
+  window.addEventListener('wheel', function (e) {
+    frustum *= (1 + Math.sign(e.deltaY) * 0.1);
+    frustum = Math.max(24, Math.min(170, frustum));
+    updateProjection();
+  }, { passive: true });
+  window.addEventListener('keydown', function (e) {
+    if (e.key === 'r' || e.key === 'R') { azimuth = 0.6; polar = 0.5; frustum = 70; updateProjection(); }
+    if (e.key === 't' || e.key === 'T') { polar = 0.001; }
+  });
+  window.addEventListener('resize', function () {
+    renderer.setSize(window.innerWidth, window.innerHeight); updateProjection();
+  });
+
+  // --- Render loop ---
+  function animate() {
+    requestAnimationFrame(animate);
+    updateCamera();
+    ray.setFromCamera(mouse, camera);
+    const hits = ray.intersectObject(deck);
+    if (hits.length) {
+      const p = hits[0].point;
+      dot.visible = true;
+      dot.position.set(p.x, p.y + 0.1, p.z);
+      coordsEl.textContent = 'cursor:  x ' + p.x.toFixed(1) + '   z ' + p.z.toFixed(1);
+    } else {
+      dot.visible = false;
+      coordsEl.textContent = 'cursor: —';
+    }
+    renderer.render(scene, camera);
+  }
+  updateProjection();
+  animate();
+})();
+</script>
+</body>
+</html>
