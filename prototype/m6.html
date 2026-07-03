@@ -139,6 +139,8 @@
       <option value="oak">Oak — 200 kg/m²</option>
       <option value="iron">Iron — 600 kg/m²</option>
       <option value="steel">Steel — 900 kg/m²</option>
+      <option value="adam">Adamantine — 700 kg/m², light</option>
+      <option value="depth">Depthsteel — 1400 kg/m², heavy</option>
     </select>
   </label>
   <label style="display:flex;align-items:center;gap:5px;font-size:12px;opacity:.85">Hull
@@ -236,6 +238,13 @@ window.GUN_SOUNDS = {
     {key:'manaeng', name:'Mana Engine',      cat:'Magic',      color:0x8f7bff, w:6,  d:5, h:4,   mass:2000, hp:350, highValue:true},
     {key:'envelope',name:'Lift Envelope',    cat:'Airship',    color:0xd8e6f2, w:10, d:8, h:9,   mass:1200, hp:220, highValue:false},
     {key:'tracks',  name:'Track Assembly',   cat:'Ground',     color:0x6b6f76, w:8,  d:4, h:2,   mass:1800, hp:300, highValue:false},
+    {key:'magiart', name:'Magiartillery',    cat:'Weapon',     color:0xd07bff, w:4,  d:6, h:3.2, mass:2600, hp:240, highValue:false,
+       ball:{muzzleMps:950, shellKg:8, rpm:8}, viz:{r:0.3, len:7, color:0xd8a0ff}},
+    {key:'shield',  name:'Shield Barrier',   cat:'Magic',      color:0x7fd8ff, w:4,  d:4, h:4,   mass:1400, hp:220, highValue:true},
+    {key:'blink',   name:'Blink Drive',      cat:'Magic',      color:0x9fe8ff, w:5,  d:4, h:3,   mass:1600, hp:260, highValue:false},
+    {key:'pylon',   name:'Mindlink Pylon',   cat:'Magic',      color:0x9adfff, w:2.5,d:2.5,h:8,  mass:800,  hp:180, highValue:false},
+    {key:'infberth',name:'Infusion Vats',    cat:'Crew',       color:0xff8adf, w:6,  d:4, h:3.5, mass:1000, hp:200, highValue:true},
+    {key:'necro',   name:'Necroforge Crypt', cat:'Crew',       color:0x86d8b0, w:6,  d:4, h:3.5, mass:1100, hp:220, highValue:false},
     {key:'tower',   name:'Tower Mast',       cat:'Mast',       color:0x9aa0a8, w:2.6,d:2.6,h:9,   mass:500,  hp:170, highValue:false},
     {key:'tripod',  name:'Tripod Mast',      cat:'Mast',       color:0x9aa0a8, w:3.2,d:3.2,h:10,  mass:600,  hp:160, highValue:false},
     {key:'cage',    name:'Cage Mast',        cat:'Mast',       color:0x8f959c, w:2.8,d:2.8,h:11,  mass:520,  hp:150, highValue:false},
@@ -271,6 +280,12 @@ window.GUN_SOUNDS = {
     manaeng: {power:150, crewNeed:1, lift:5000},  // powers magic systems; shields envelopes while alive
     envelope:{lift:30000},
     tracks:  {power:-10, thrust:60, fuelRate:4, crewNeed:1},
+    magiart: {power:-30, crewNeed:2},             // fires mana, not shells — needs a live mana engine
+    shield:  {power:-80, crewNeed:1},             // soaks incoming damage ship-wide while powered
+    blink:   {power:-45, crewNeed:1},             // short-hop teleport: shells sometimes just... miss
+    pylon:   {power:-20},                         // mindlink: crew act with perfect coordination
+    infberth:{crewCap:8},                         // suggestible, explosive, plentiful
+    necro:   {crewCap:6},                         // sold by Ashterrin: slow, fearless, never leave post
   };
   const LEVEL_H = 7;   // vertical spacing between stacked decks (parts are ~6 tall)
   PART_DEFS.forEach(d=>{ if(d.ball) d.ball.energyJ=0.5*d.ball.shellKg*d.ball.muzzleMps*d.ball.muzzleMps; });
@@ -493,6 +508,41 @@ window.GUN_SOUNDS = {
         cyl(w*0.32, w*0.36, h*0.82, 12, body, 0, h*0.5, 0);
         box(w*1.1, 0.4, d*1.1, MAT.steel, 0, h*0.92, 0);
         break; }
+      case 'magiart': {                                             // magiartillery — crystal-barreled energy mount
+        box(w, h*0.4, d*0.8, body, 0, h*0.2, 0);
+        cyl(w*0.34, w*0.4, h*0.42, 12, MAT.dark, 0, h*0.4+h*0.21, 0);
+        const mb=cyl(0.24,0.3, d*1.1, 8, MAT.dark, 0, h*0.72, d*0.5); mb.rotation.x=Math.PI/2;   // barrel
+        const tip=new THREE.Mesh(new THREE.OctahedronGeometry(0.34), MAT.glow); tip.position.set(0,h*0.72,d*1.02); g.add(tip);
+        cyl(0.12,0.12, h*0.5, 6, MAT.glow, -w*0.36, h*0.45, -d*0.2);   // mana feed conduits
+        cyl(0.12,0.12, h*0.5, 6, MAT.glow,  w*0.36, h*0.45, -d*0.2);
+        break; }
+      case 'shield': {                                              // shield barrier projector
+        box(w*0.9, h*0.28, d*0.9, body, 0, h*0.14, 0);
+        cyl(w*0.2, w*0.28, h*0.4, 10, MAT.dark, 0, h*0.28+h*0.2, 0);
+        const ring2=new THREE.Mesh(new THREE.TorusGeometry(w*0.34,0.12,8,20), MAT.glow); ring2.position.y=h*0.74; ring2.rotation.x=Math.PI/2; g.add(ring2);
+        const core=new THREE.Mesh(new THREE.SphereGeometry(w*0.16,12,12), MAT.glow); core.position.y=h*0.74; g.add(core);
+        break; }
+      case 'blink': {                                               // blink drive — finned displacement engine
+        box(w, h*0.5, d, body, 0, h*0.25, 0);
+        for(let i=0;i<3;i++){ const fin=new THREE.Mesh(new THREE.BoxGeometry(w*0.7,h*0.5,0.14), MAT.glow); fin.position.set(0,h*0.5+h*0.22,-hd*0.5+i*hd*0.5); g.add(fin); }
+        box(w*0.3, h*0.2, d*0.9, MAT.dark, 0, h*0.56, 0);
+        break; }
+      case 'pylon': {                                               // mindlink pylon — tapered obelisk, banded with light
+        box(w*1.1, 0.4, d*1.1, MAT.steel, 0, 0.2, 0);
+        cyl(w*0.16, w*0.42, h*0.8, 6, body, 0, h*0.4+0.2, 0);
+        [0.35,0.55,0.75].forEach(fr=>{ const band=new THREE.Mesh(new THREE.TorusGeometry(w*(0.42-fr*0.25),0.06,6,12), MAT.glow); band.position.y=h*fr; band.rotation.x=Math.PI/2; g.add(band); });
+        const apex=new THREE.Mesh(new THREE.OctahedronGeometry(w*0.2), MAT.glow); apex.position.y=h*0.92; g.add(apex);
+        break; }
+      case 'infberth': {                                            // infusion vats — glowing culture tanks
+        box(w, h*0.6, d, body, 0, h*0.3, 0);
+        for(let i=0;i<3;i++){ const vt=cyl(0.55,0.55, h*0.5, 10, MAT.glow, -w*0.3+i*w*0.3, h*0.6+h*0.2, 0); }
+        box(w*0.9, h*0.1, d*0.6, MAT.dark, 0, h*0.62, 0);
+        break; }
+      case 'necro': {                                               // necroforge crypt — dark vault, sickly light in the slits
+        box(w, h*0.7, d, body, 0, h*0.35, 0);
+        box(w*0.7, h*0.28, d*0.8, MAT.dark, 0, h*0.7+h*0.1, 0);     // vaulted roof block
+        for(let i=0;i<3;i++) box(0.5,0.16,0.06, MAT.glow, -w*0.25+i*w*0.25, h*0.45, hd+0.02);
+        break; }
       case 'msc': {                                                 // mana storage converter — pocket-dimension hangar
         box(w, h*0.55, d, body, 0, h*0.275, 0);
         const ring=new THREE.Mesh(new THREE.TorusGeometry(Math.min(w,h)*0.34,0.16,8,20), MAT.glow); ring.position.set(0,h*0.62,0); g.add(ring);
@@ -709,7 +759,9 @@ window.GUN_SOUNDS = {
     const DECK_MATS = {
       oak:   { name:'Oak',   cap:200, color:0x8a7651, rough:0.9,  metal:0.03, self:12 },
       iron:  { name:'Iron',  cap:600, color:0x5c626a, rough:0.62, metal:0.55, self:34 },
-      steel: { name:'Steel', cap:900, color:0x717c88, rough:0.42, metal:0.8,  self:55 }
+      steel: { name:'Steel', cap:900, color:0x717c88, rough:0.42, metal:0.8,  self:55 },
+      adam:  { name:'Adamantine', cap:700,  color:0x9a5a3a, rough:0.35, metal:0.7, self:30 },   // heat-hungry wonder metal — light for its strength
+      depth: { name:'Depthsteel', cap:1400, color:0x2a3a55, rough:0.3,  metal:0.9, self:110 }   // pressure-forged; absurdly strong, absurdly heavy
     };
     let deckMatKey='oak';
     function applyDeckMat(){ const m=DECK_MATS[deckMatKey]; MAT.deckTop.color.setHex(m.color); MAT.deckTop.roughness=m.rough; MAT.deckTop.metalness=m.metal; }
@@ -1287,6 +1339,10 @@ window.GUN_SOUNDS = {
       ship.parts.forEach(p=>{ const py=(p.lvl||0)*LEVEL_H;
         if(p.gun){ addCrew(p.x-1.7*f, py, p.z+(Math.random()-0.5)*1.2, 1.3, p, 'gunner'); }   // gunner at the weapon
         if(p.key==='crew'){ for(let n=0;n<2;n++) addCrew(p.x+(Math.random()-0.5)*3, py, p.z+(Math.random()-0.5)*3, 4.5, null, 'hand'); }  // deck hands
+        if(p.key==='infberth'){ for(let n=0;n<3;n++){ addCrew(p.x+(Math.random()-0.5)*3, py, p.z+(Math.random()-0.5)*3, 5.5, null, 'hand');
+          const c=ship.crew[ship.crew.length-1]; c.expl=true; c.comp=0.3+Math.random()*0.35; c.speed*=1.3; } }        // infusions: quick, sloppy, explosive
+        if(p.key==='necro'){ for(let n=0;n<2;n++){ addCrew(p.x+(Math.random()-0.5)*3, py, p.z+(Math.random()-0.5)*3, 4, null, 'hand');
+          const c=ship.crew[ship.crew.length-1]; c.undead=true; c.comp=0.62; c.speed*=0.62; } }                        // the bought dead: slow, fearless
         if(CONTROL_KEYS.includes(p.key)||p.key==='firedir'){ addCrew(p.x, py, p.z, 1.4, p, 'officer'); }   // watch officer / spotters
       });
       ship.handsMax=ship.crew.length; ship.hands=ship.crew.length;
@@ -1364,9 +1420,14 @@ window.GUN_SOUNDS = {
     }
     function shipShield(ship){ return ship.parts.some(q=>q.key==='manaeng' && q.alive); }
     function hitPart(p, part){
+      const ship=part.ship;
+      if(shipShield(ship) && ship.parts.some(q=>q.key==='blink' && q.alive) && Math.random()<0.12){
+        flash(part.x,part.y+part.h*0.6,part.z,0x9fe8ff,2.0,0.16); return; }   // blink: the shell arrives where the ship isn't
       const factor=p.initSpeed>0?(p.vel.length()/p.initSpeed):1; let impactE=p.energyJ*factor*factor;
-      if(part.key==='envelope' && shipShield(part.ship)){ impactE*=0.25;   // the mana field soaks most of it
+      if(part.key==='envelope' && shipShield(ship)){ impactE*=0.25;   // the mana field soaks most of it
         flash(p.pos.x,p.pos.y,p.pos.z,0x7fd8ff,1.6,0.18); }
+      else if(shipShield(ship) && ship.parts.some(q=>q.key==='shield' && q.alive)){ impactE*=0.65;   // barrier projector takes the edge off everything
+        flash(p.pos.x,p.pos.y,p.pos.z,0x7fd8ff,1.1,0.12); }
       part.hp-=impactE*DMG_PER_J;
       flash(p.pos.x,p.pos.y,p.pos.z,0xffd0a0,0.9,0.12); shake+=0.16;
       if(part.hp<=0 && part.alive){ part.alive=false;
@@ -1381,13 +1442,15 @@ window.GUN_SOUNDS = {
     function hurtCrew(c,dmg){ if(!c.alive) return; c.hp-=dmg;
       if(c.hp<=0){ c.alive=false; c.deadT=1.6; c.ship.hands=Math.max(0,c.ship.hands-1);
         c.mesh.rotation.z=(Math.random()<0.5?1:-1)*Math.PI*0.5; c.mesh.position.y=c.y+0.2;   // topple
-        flash(c.x,c.y+0.9,c.z,0xbb2a2a,0.55,0.12); } }
+        if(c.expl){ explosion(c.x,c.y+0.9,c.z); c.deadT=0.01; }   // infusions go out with a bang
+        else flash(c.x,c.y+0.9,c.z,0xbb2a2a,0.55,0.12); } }
     function crewAt(c,x,z,r){ return Math.hypot(c.x-x,c.z-z)<=r; }
     function setTarget(c,x,z){ const dk=c.ship.deck;   // pull wayward targets back onto the deck
       if(dk && !pointInPoly(x,z,dk)){ x=(x+c.hx)/2; z=(z+c.hz)/2; if(!pointInPoly(x,z,dk)){ x=c.hx; z=c.hz; } }
       c.tx=x; c.tz=z; }
     function updateCrew(dt){
       [player,enemy].forEach(ship=>{ if(!ship||!ship.crew) return;
+        ship.pylonOn = ship.parts.some(p=>p.key==='pylon' && p.alive);   // mindlink: everyone acts like a veteran
         // a gun only fires while a live gunner is actually standing at the mount
         ship.parts.forEach(p=>{ if(p.gun) p.manned=false; });
         ship.crew.forEach(c=>{ if(c.alive && c.station && c.station.gun && c.station.alive && crewAt(c,c.station.x,c.station.z,2.8)) c.station.manned=true; });
@@ -1417,8 +1480,9 @@ window.GUN_SOUNDS = {
                 c.retarget=1+Math.random()*2.6;
               }
             } else if(c.focusT<=0){                     // gunners & officers hold their station… mostly
-              c.focusT=2+Math.random()*7*c.comp;
-              if(Math.random()>c.comp*0.9){ const a=Math.random()*Math.PI*2, r=2.5+Math.random()*2.5; setTarget(c,c.hx+Math.cos(a)*r,c.hz+Math.sin(a)*r); }  // wanders off — their asses are NOT coordinated
+              const ec = (ship.pylonOn || c.undead) ? 1 : c.comp;   // mindlinked & undead crew never lose the thread
+              c.focusT=2+Math.random()*7*ec;
+              if(Math.random()>ec*0.9){ const a=Math.random()*Math.PI*2, r=2.5+Math.random()*2.5; setTarget(c,c.hx+Math.cos(a)*r,c.hz+Math.sin(a)*r); }  // wanders off — their asses are NOT coordinated
               else setTarget(c,c.hx+(Math.random()-0.5)*1.4,c.hz+(Math.random()-0.5)*1.4);
             }
             const dx=c.tx-c.x, dz=c.tz-c.z, d=Math.hypot(dx,dz);
@@ -1557,6 +1621,10 @@ window.GUN_SOUNDS = {
           [player,enemy].forEach(ship=>{ const mult=fireMult(ship), hasMag=shipHasMag(ship);
             ship.parts.forEach(p=>{ if(p.gun && p.alive && elapsed>=p.nextFire){
               if(!p.manned){ p.nextFire=elapsed+0.4; return; }   // nobody at the mount -> the gun waits
+              if(p.key==='magiart'){   // magiartillery draws on the mana engines, not the magazines
+                if(shipShield(ship)){ fireGun(p); p.nextFire=elapsed+(p.fireInt/mult)*(0.8+Math.random()*0.4); }
+                else p.nextFire=elapsed+0.8;
+                return; }
               const cost=AMMO_COST[p.key]||1;
               if(hasMag && ship.ammo>=cost){ fireGun(p); ship.ammo-=cost; p.nextFire=elapsed+(p.fireInt/mult)*(0.8+Math.random()*0.4); }
               else { p.nextFire=elapsed+0.6; }   // dry feed: keep checking, stay silent
