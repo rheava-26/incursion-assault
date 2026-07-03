@@ -1204,16 +1204,19 @@ window.GUN_SOUNDS = {
       ship.power=power; ship.crewCap=crewCap; ship.crewNeed=crewNeed; ship.ammoMax=ammoMax; ship.ammo=ammoMax;
       // --- crew: hands on deck & gunners manning the weapons; they move, take fire, and die ---
       ship.crew=[];
+      ship.deck=hullPts.map(v=>[v[0]+station, v[1]]);   // world-space deck outline — keeps crew pathing on the ship
       const uniform = side==='player' ? 0x33507f : 0x7a3030;
-      function addCrew(hx,hz,y,radius,station){
+      function addCrew(hx,y,hz,radius,stn,role){        // (x, height, z) — was swapped in m5; crew floated at y=z
         const mesh=makeCrewFigure(uniform); mesh.position.set(hx,y,hz); scene.add(mesh);
         ship.crew.push({ mesh, side, ship, hp:30, maxHp:30, alive:true, x:hx, z:hz, y, hx, hz, tx:hx, tz:hz,
-          radius, speed:2.1+Math.random()*1.3, bob:Math.random()*6, retarget:Math.random()*2, station });
+          radius, speed:2.1+Math.random()*1.3, bob:Math.random()*6, retarget:Math.random()*2, station:stn, role,
+          comp:0.45+Math.random()*0.55,                 // competence: pace, focus, how quickly orders sink in
+          task:null, taskT:0, focusT:2+Math.random()*6 });
       }
       ship.parts.forEach(p=>{ const py=(p.lvl||0)*LEVEL_H;
-        if(p.gun){ addCrew(p.x-1.7*f, py, p.z+(Math.random()-0.5)*1.2, 1.3, p); }            // gunner at the weapon
-        if(p.key==='crew'){ for(let n=0;n<2;n++) addCrew(p.x+(Math.random()-0.5)*3, py, p.z+(Math.random()-0.5)*3, 4.5, null); }  // deck hands
-        if(CONTROL_KEYS.includes(p.key)||p.key==='firedir'){ addCrew(p.x, py, p.z, 1.4, p); }   // watch officer / spotters
+        if(p.gun){ addCrew(p.x-1.7*f, py, p.z+(Math.random()-0.5)*1.2, 1.3, p, 'gunner'); }   // gunner at the weapon
+        if(p.key==='crew'){ for(let n=0;n<2;n++) addCrew(p.x+(Math.random()-0.5)*3, py, p.z+(Math.random()-0.5)*3, 4.5, null, 'hand'); }  // deck hands
+        if(CONTROL_KEYS.includes(p.key)||p.key==='firedir'){ addCrew(p.x, py, p.z, 1.4, p, 'officer'); }   // watch officer / spotters
       });
       ship.handsMax=ship.crew.length; ship.hands=ship.crew.length;
       return ship;
@@ -1304,14 +1307,47 @@ window.GUN_SOUNDS = {
       if(c.hp<=0){ c.alive=false; c.deadT=1.6; c.ship.hands=Math.max(0,c.ship.hands-1);
         c.mesh.rotation.z=(Math.random()<0.5?1:-1)*Math.PI*0.5; c.mesh.position.y=c.y+0.2;   // topple
         flash(c.x,c.y+0.9,c.z,0xbb2a2a,0.55,0.12); } }
+    function crewAt(c,x,z,r){ return Math.hypot(c.x-x,c.z-z)<=r; }
+    function setTarget(c,x,z){ const dk=c.ship.deck;   // pull wayward targets back onto the deck
+      if(dk && !pointInPoly(x,z,dk)){ x=(x+c.hx)/2; z=(z+c.hz)/2; if(!pointInPoly(x,z,dk)){ x=c.hx; z=c.hz; } }
+      c.tx=x; c.tz=z; }
     function updateCrew(dt){
       [player,enemy].forEach(ship=>{ if(!ship||!ship.crew) return;
+        // a gun only fires while a live gunner is actually standing at the mount
+        ship.parts.forEach(p=>{ if(p.gun) p.manned=false; });
+        ship.crew.forEach(c=>{ if(c.alive && c.station && c.station.gun && c.station.alive && crewAt(c,c.station.x,c.station.z,2.8)) c.station.manned=true; });
+        // orphaned live guns get re-manned by the nearest free hand — eventually (competence-paced, nobody hurries)
+        ship.parts.forEach(p=>{ if(!p.gun || !p.alive) return;
+          if(ship.crew.some(c=>c.alive && c.station===p)) return;
+          let best=null,bd=1e9;
+          ship.crew.forEach(c=>{ if(c.alive && !c.station && !c.task){ const dd=Math.hypot(c.x-p.x,c.z-p.z); if(dd<bd){ bd=dd; best=c; } } });
+          if(best && Math.random()<dt*best.comp*0.8){ best.station=p; best.role='gunner'; best.hx=p.x-1.7*p.facing; best.hz=p.z; best.radius=1.3; setTarget(best,best.hx,best.hz); }
+        });
         ship.crew.forEach(c=>{
           if(c.alive){
-            c.retarget-=dt;
-            if(c.retarget<=0){ c.retarget=1+Math.random()*2.6; const r=c.radius*Math.sqrt(Math.random()), a=Math.random()*Math.PI*2; c.tx=c.hx+Math.cos(a)*r; c.tz=c.hz+Math.sin(a)*r; }
+            c.retarget-=dt; c.focusT-=dt;
+            if(c.station && !c.station.alive){ c.station=null; c.role='hand'; c.radius=4.5; c.task=null; }   // station destroyed -> back to deck duty
+            if(c.role==='hand'){
+              if(c.task==='mag'){                       // fetch shells at the magazine…
+                if(crewAt(c,c.tx,c.tz,0.9)){ c.taskT-=dt; if(c.taskT<=0){
+                  const g=ship.parts.filter(p=>p.gun&&p.alive); const t=g[Math.floor(Math.random()*g.length)];
+                  if(t){ c.task='deliver'; setTarget(c,t.x-1.2*t.facing,t.z+(Math.random()-0.5)*1.6); } else c.task=null; } } }
+              else if(c.task==='deliver'){              // …and hump them to a gun
+                if(crewAt(c,c.tx,c.tz,1.0)){ c.task=null; c.retarget=0.5+Math.random()*2; } }
+              else if(c.retarget<=0){
+                const mags=ship.parts.filter(p=>p.key==='mag'&&p.alive), guns=ship.parts.filter(p=>p.gun&&p.alive);
+                if(mags.length && guns.length && Math.random()<0.5*c.comp){ const m=mags[Math.floor(Math.random()*mags.length)];
+                  c.task='mag'; c.taskT=0.7+Math.random(); setTarget(c,m.x+(Math.random()-0.5)*2,m.z+(Math.random()-0.5)*2); }
+                else { const r=c.radius*Math.sqrt(Math.random()), a=Math.random()*Math.PI*2; setTarget(c,c.hx+Math.cos(a)*r,c.hz+Math.sin(a)*r); }
+                c.retarget=1+Math.random()*2.6;
+              }
+            } else if(c.focusT<=0){                     // gunners & officers hold their station… mostly
+              c.focusT=2+Math.random()*7*c.comp;
+              if(Math.random()>c.comp*0.9){ const a=Math.random()*Math.PI*2, r=2.5+Math.random()*2.5; setTarget(c,c.hx+Math.cos(a)*r,c.hz+Math.sin(a)*r); }  // wanders off — their asses are NOT coordinated
+              else setTarget(c,c.hx+(Math.random()-0.5)*1.4,c.hz+(Math.random()-0.5)*1.4);
+            }
             const dx=c.tx-c.x, dz=c.tz-c.z, d=Math.hypot(dx,dz);
-            if(d>0.06){ const step=Math.min(d,c.speed*dt); c.x+=dx/d*step; c.z+=dz/d*step; c.mesh.rotation.y=Math.atan2(dx,dz); c.bob+=dt*9; }
+            if(d>0.06){ const step=Math.min(d,c.speed*(0.6+c.comp*0.6)*(c.task?1.35:1)*dt); c.x+=dx/d*step; c.z+=dz/d*step; c.mesh.rotation.y=Math.atan2(dx,dz); c.bob+=dt*9; }
             c.mesh.position.set(c.x, c.y+Math.abs(Math.sin(c.bob))*0.07, c.z);
           } else if(c.deadT>0){ c.deadT-=dt; c.mesh.traverse(o=>{ if(o.isMesh){ o.material.transparent=true; o.material.opacity=Math.max(0,c.deadT/1.6); } });
             if(c.deadT<=0){ scene.remove(c.mesh); disposeObj(c.mesh); } }
@@ -1392,6 +1428,7 @@ window.GUN_SOUNDS = {
         if(firing && !over && player && enemy){
           [player,enemy].forEach(ship=>{ const mult=fireMult(ship), hasMag=shipHasMag(ship);
             ship.parts.forEach(p=>{ if(p.gun && p.alive && elapsed>=p.nextFire){
+              if(!p.manned){ p.nextFire=elapsed+0.4; return; }   // nobody at the mount -> the gun waits
               const cost=AMMO_COST[p.key]||1;
               if(hasMag && ship.ammo>=cost){ fireGun(p); ship.ammo-=cost; p.nextFire=elapsed+(p.fireInt/mult)*(0.8+Math.random()*0.4); }
               else { p.nextFire=elapsed+0.6; }   // dry feed: keep checking, stay silent
