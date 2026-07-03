@@ -7,27 +7,30 @@ agency** (Cosmoteer-style) — prefer soft warnings over hard blocks. Satisfying
 design are the top "feel" priority.
 
 ## Where the game lives
-- **`prototype/m5.html`** — THE current game: one self-contained file with an integrated
+- **`prototype/m6.html`** — THE current game: one self-contained file with an integrated
   **Build ⇄ Battle** experience. Design a warship in the editor, then fight a mirror of it (or a
-  preset enemy) in a physics combat sim. Older `m0`–`m4` are throwaway history — ignore them.
+  preset enemy) in a physics combat sim. Older `m0`–`m5` are throwaway history — ignore them.
 - Design docs at repo root: `Incursion-Assault-GDD.md`, `-Tech-Plan.md`, `-Art-Direction.md`,
-  `-Build-Spec.md`.
+  `-Build-Spec.md`, and **`Incursion-Assault-Worldbuilding.md`** (setting/factions/magic canon —
+  supersedes the GDD where they conflict).
 
 ## Running / previewing it
-Pure static HTML, no build step. **Open `prototype/m5.html` in a browser** (Chrome/Edge/Firefox) —
+Pure static HTML, no build step. **Open `prototype/m6.html` in a browser** (Chrome/Edge/Firefox) —
 audio is base64-inlined so no server is needed. Optional local server: `prototype/serve.ps1`
 (Windows PowerShell) serves it on `http://localhost:8777`.
 
-> **Preview limit for coding agents:** the Three.js game needs a real browser/GPU to render, so in
-> a headless/cloud sandbox you can edit and reason about the code but **cannot screenshot or visually
-> verify** it. Verify logic by reading the DOM/readout values where possible; leave visual tuning for
-> a real browser.
+> **Previewing in a headless sandbox:** the game renders fine under headless Chromium with
+> SwiftShader (`--use-gl=angle --use-angle=swiftshader`) via Playwright — screenshots and visual
+> verification DO work. Load `file://…/prototype/m6.html`, wait ~2s, screenshot; also assert no
+> console/page errors and read the `#r*` readout DOM for logic checks. (three.js is vendored
+> inline, so no network is needed.)
 
-## Editing `m5.html` — read this first
-- The file is **large (~6 MB)** because the gun-sound WAVs are inlined as base64 in one giant
-  `<script>window.GUN_SOUNDS={...}</script>` line near the top. **Never read/print that base64
-  line** — it will flood your context. Use grep to find line numbers, read narrow ranges, and edit
-  unique strings.
+## Editing `m6.html` — read this first
+- The file is **large (~6.6 MB)**: three.js r128 is vendored inline (runs fully offline) and the
+  gun-sound WAVs are base64 in a `<script>window.GUN_SOUNDS={...}</script>` block (one giant line
+  **per sound**). **Never read/print any of the giant lines** (three.js ~line 188; sounds ~192–194)
+  — they will flood your context. Guard greps with a line-length filter (e.g.
+  `awk 'length($0)<300 && /pattern/'`), read narrow ranges, and edit unique strings.
 - One big IIFE. Order: constants (`PART_DEFS`, `DEFMAP`, `SYS`, `MAT`, world physics, `HULL_PROFILES`)
   → shared model/geometry helpers (`makeRolePart`, `makeHull`, `makeBulwark`, `makeWater`) →
   **`Editor`** IIFE → **`Battle`** IIFE → controller. Top-level `MODE` var; each module owns its own
