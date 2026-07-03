@@ -84,7 +84,8 @@
   <h1>Incursion Assault — ship editor</h1>
   <div class="sub">No grid, no zones — just damageable role-parts. Shape the hull, place freely (parts can <b>overhang the sides as sponsons</b>), then hit <b>⚔ Battle</b>.</div>
   <div class="row"><b style="color:#ffb24d">Orange nodes</b> drag to reshape · <kbd>Shift</kbd>-click to delete · <b style="color:#47d18a">green edge dots</b> drag to add a new node</div>
-  <div class="row">Pick a part (right) → click deck to place · <kbd>Q</kbd> rotate · <kbd>Esc</kbd> stop</div>
+  <div class="row"><kbd>Ctrl</kbd>-drag a <b style="color:#47d18a">green dot</b> to bow the edge into an <b>arc</b> (sponson bulges, round bows, coves) · <kbd>Shift</kbd>-click it to straighten</div>
+  <div class="row">Pick a part (right) → click deck to place · <kbd>Q</kbd> rotate · <kbd>Esc</kbd> stop · <kbd>Ctrl+Z</kbd>/<kbd>Ctrl+Y</kbd> undo/redo</div>
   <div class="row">Click a part to inspect · drag to move · <kbd>Del</kbd> remove</div>
   <div class="row"><b style="color:#47d18a">Build up:</b> <kbd>＋deck</kbd> adds a level · <kbd>▲</kbd>/<kbd>▼</kbd> pick which deck · place a <b>Deck Platform</b>/<b>Superstructure</b> to raise a deck you build on top of</div>
   <div class="row"><kbd>Left-drag empty</kbd> orbit · <kbd>T</kbd> top · <kbd>R</kbd> reset</div>
@@ -122,6 +123,8 @@
     <button id="lvlAdd" title="add a deck on top">＋deck</button>
     <button id="lvlDel" title="remove the top deck (must be empty)">🗑</button>
     <button id="symBtn" title="mirror placements port/starboard">⇄ Sym</button>
+    <button id="undoBtn" title="undo (Ctrl+Z)">↶</button>
+    <button id="redoBtn" title="redo (Ctrl+Y)">↷</button>
   </span>
   <label style="display:flex;align-items:center;gap:5px;font-size:12px;opacity:.85">Deck mat
     <select id="deckMatSel" style="background:#1b2530;color:#e8eef5;border:1px solid #2c3a49;border-radius:5px;padding:3px 5px">
@@ -205,6 +208,10 @@ window.GUN_SOUNDS = {
     {key:'mag',     name:'Magazine',         cat:'Ammo',       color:0xffd24d, w:6,  d:4, h:3,   mass:1200, hp:220, highValue:true},
     {key:'crew',    name:'Crew Berth',       cat:'Crew',       color:0x6fd0a0, w:5,  d:4, h:3,   mass:600,  hp:160, highValue:false},
     {key:'bridge',  name:'Bridge',           cat:'Control',    color:0x4db5ff, w:5,  d:4, h:4.5, mass:1000, hp:260, highValue:false},
+    {key:'conning', name:'Conning Tower',    cat:'Control',    color:0x5b8fb5, w:3.5,d:3.5,h:6, mass:2200, hp:600, highValue:false},
+    {key:'armbridge',name:'Armored Bridge',  cat:'Control',    color:0x46748f, w:5,  d:4, h:4.5, mass:1800, hp:500, highValue:false},
+    {key:'flybridge',name:'Flying Bridge',   cat:'Control',    color:0x62c0dd, w:7,  d:3, h:3,   mass:500,  hp:140, highValue:false},
+    {key:'firedir', name:'Fire Director',    cat:'Control',    color:0x8fd0e8, w:2.5,d:2.5,h:5, mass:700,  hp:180, highValue:false},
     {key:'column',  name:'Support Column',   cat:'Structure',  color:0x8a8f96, w:2,  d:2, h:4,   mass:300,  hp:200, highValue:false},
     {key:'platform',name:'Deck Platform',    cat:'Structure',  color:0x8a8f96, w:6,  d:6, h:7,   mass:450,  hp:220, highValue:false, deckTop:true, lvls:1},
     {key:'super',   name:'Superstructure',   cat:'Structure',  color:0x9aa0a8, w:6,  d:6, h:14,  mass:1900, hp:520, highValue:false, deckTop:true, lvls:2},
@@ -230,6 +237,10 @@ window.GUN_SOUNDS = {
     mag:     {ammoStore:400},
     crew:    {crewCap:6},
     bridge:  {power:-10, crewNeed:1},
+    conning: {power:-8,  crewNeed:2},
+    armbridge:{power:-12, crewNeed:2},
+    flybridge:{power:-6,  crewNeed:1},
+    firedir: {power:-10, crewNeed:2},   // alive in battle -> tighter gun spread
     column:  {},
     platform:{},
     super:   {},
@@ -417,6 +428,47 @@ window.GUN_SOUNDS = {
         box(0.06,0.06,1.5, MAT.steel, 0, h*1.05+h*0.95, -d*0.12);  // yardarm
         box(0.32,0.32,0.32, MAT.glow, 0, h*1.05+h*1.2, -d*0.12);   // mast light
         break; }
+      case 'conning': {                                             // heavily armored cylindrical citadel
+        cyl(w*0.5, w*0.56, h*0.62, 14, body, 0, h*0.31, 0);         // main armored drum, slightly flared base
+        cyl(w*0.42, w*0.42, h*0.2, 14, MAT.dark, 0, h*0.62+h*0.1, 0); // narrower observation ring
+        for(let i=0;i<6;i++){ const a=(i/6-0.25)*Math.PI*1.3;       // vision slits around the front arc
+          box(0.5,0.16,0.06, MAT.glass, Math.sin(a)*w*0.42, h*0.7, Math.cos(a)*w*0.42); }
+        cyl(w*0.46, w*0.44, h*0.08, 14, MAT.steel, 0, h*0.84, 0);   // roof cap
+        cyl(0.35,0.4, h*0.1, 10, MAT.dark, 0, h*0.9, 0);            // periscope base
+        cyl(0.09,0.09, h*0.28, 8, MAT.steel, 0, h*1.02, 0);          // periscope
+        break; }
+      case 'armbridge': {                                           // squat plated bridge — thick walls, slit windows
+        box(w, h*0.42, d, body, 0, h*0.21, 0);                     // heavy tier 1
+        box(w*1.04, 0.35, d*1.04, MAT.dark, 0, h*0.42, 0);          // armor belt band
+        box(w*0.8, h*0.34, d*0.8, body, 0, h*0.42+h*0.17, 0);       // tier 2
+        box(w*0.7, 0.14, 0.06, MAT.glass, 0, h*0.62, d*0.4+0.02);   // slit windows only
+        box(0.14, 0.14, d*0.7, MAT.glass, w*0.4+0.02, h*0.62, 0);
+        box(w*0.44, h*0.2, d*0.44, MAT.dark, 0, h*0.76+h*0.1, 0);   // splinter hood
+        cyl(0.1,0.1, h*0.5, 8, MAT.steel, 0, h*0.96+h*0.2, -d*0.1); // stub mast
+        break; }
+      case 'flybridge': {                                           // open-air platform w/ wide wings on posts
+        const px=hw*0.4, pz=hd*0.5;
+        [[-px,-pz],[px,-pz],[px,pz],[-px,pz]].forEach(c=> cyl(0.16,0.18, h*0.62, 8, MAT.steel, c[0], h*0.31, c[1]));
+        box(w, 0.3, d, body, 0, h*0.62, 0);                        // full-width platform (the wings)
+        const rh=0.7;                                               // open railing all round
+        box(w, rh, 0.08, MAT.steel, 0, h*0.62+rh*0.5,  hd-0.04);
+        box(w, rh, 0.08, MAT.steel, 0, h*0.62+rh*0.5, -hd+0.04);
+        box(0.08, rh, d, MAT.steel,  hw-0.04, h*0.62+rh*0.5, 0);
+        box(0.08, rh, d, MAT.steel, -hw+0.04, h*0.62+rh*0.5, 0);
+        box(w*0.24, h*0.3, d*0.5, MAT.dark, 0, h*0.62+h*0.15, 0);   // chart house
+        cyl(0.28,0.3, 0.9, 8, MAT.steel, -hw*0.6, h*0.62+0.45, 0);  // pelorus stands on the wings
+        cyl(0.28,0.3, 0.9, 8, MAT.steel,  hw*0.6, h*0.62+0.45, 0);
+        break; }
+      case 'firedir': {                                             // rangefinder tower — tall pedestal + wide stereo arms
+        box(w*0.9, 0.4, d*0.9, MAT.steel, 0, 0.2, 0);
+        cyl(w*0.3, w*0.4, h*0.6, 10, body, 0, h*0.3+0.2, 0);        // pedestal tube
+        cyl(w*0.52, w*0.48, h*0.14, 12, MAT.dark, 0, h*0.72, 0);    // director house
+        box(w*0.5, h*0.1, 0.05, MAT.glass, 0, h*0.74, d*0.26);
+        box(0.3, 0.34, d*2.4, MAT.steel, 0, h*0.86, 0);             // stereo rangefinder arms (the signature look)
+        cyl(0.16,0.16, 0.3, 8, MAT.dark, 0, h*0.86,  d*1.2);        // optics drums at each tip
+        cyl(0.16,0.16, 0.3, 8, MAT.dark, 0, h*0.86, -d*1.2);
+        cyl(0.06,0.06, h*0.24, 6, MAT.steel, 0, h*0.98, 0);         // antenna
+        break; }
       case 'column': {
         box(w*1.1, 0.4, d*1.1, MAT.steel, 0, 0.2, 0);
         cyl(w*0.32, w*0.36, h*0.82, 12, body, 0, h*0.5, 0);
@@ -561,6 +613,36 @@ window.GUN_SOUNDS = {
     const water=makeWater(420,48,-3.2); scene.add(water.mesh);
 
     let hull=[[-32,-8],[18,-8],[32,0],[18,8],[-32,8],[-34,0]];
+    // --- arc outcroppings: hull[i]=[x,z,bulge] — bulge bows edge i→i+1 into a circular arc
+    // (1 = full semicircle outward, negative = cove inward). All geometry/validity/battle use the
+    // EXPANDED outline (arcs tessellated to points); the raw hull keeps its editable handles.
+    let hullX=null;   // cached expanded outline, refreshed in rebuildHull()
+    function polySignedArea(p){ let s=0; for(let i=0;i<p.length;i++){ const a=p[i],b=p[(i+1)%p.length]; s+=a[0]*b[1]-b[0]*a[1]; } return s/2; }
+    function edgeNormal(p,i){   // unit normal of edge i pointing OUT of the polygon
+      const a=p[i], b=p[(i+1)%p.length]; const dx=b[0]-a[0], dz=b[1]-a[1], L=Math.hypot(dx,dz)||1;
+      const s=polySignedArea(p)>0?1:-1; return [s*dz/L, -s*dx/L];
+    }
+    function expandHull(h){
+      const out=[];
+      const norm=x=>{ while(x<=-Math.PI)x+=2*Math.PI; while(x>Math.PI)x-=2*Math.PI; return x; };
+      for(let i=0;i<h.length;i++){
+        const a=h[i], b=h[(i+1)%h.length], bl=a[2]||0;
+        out.push([a[0],a[1]]);
+        if(Math.abs(bl)<0.02) continue;
+        const L=Math.hypot(b[0]-a[0],b[1]-a[1]); if(L<0.5) continue;
+        const n=edgeNormal(h,i), s=bl*L/2;                                   // sagitta
+        const R=L*L/(8*Math.abs(s))+Math.abs(s)/2;
+        const mx=(a[0]+b[0])/2, mz=(a[1]+b[1])/2;
+        const cx=mx-n[0]*Math.sign(s)*(R-Math.abs(s)), cz=mz-n[1]*Math.sign(s)*(R-Math.abs(s));
+        const a0=Math.atan2(a[1]-cz,a[0]-cx), a1=Math.atan2(b[1]-cz,b[0]-cx);
+        const am=Math.atan2(mz+n[1]*s-cz, mx+n[0]*s-cx);                     // apex angle — sweep must pass it
+        let d1=norm(a1-a0); const dm=norm(am-a0);
+        if((d1>0)!==(dm>0) || Math.abs(dm)>Math.abs(d1)) d1 = d1>0 ? d1-2*Math.PI : d1+2*Math.PI;
+        const K=Math.max(4, Math.round(Math.abs(d1)*6));
+        for(let k=1;k<K;k++){ const t=a0+d1*k/K; out.push([cx+R*Math.cos(t), cz+R*Math.sin(t)]); }
+      }
+      return out;
+    }
     let parts=[], selPart=-1;
     let placingDef=null, ghost=null, placeRot=false;
     let curLevel=0, numLevels=1;                 // which deck you're editing, and how many exist
@@ -582,8 +664,8 @@ window.GUN_SOUNDS = {
     let deckMesh=null,tintMesh=null,hullOutline=null,bulwark=null;
     const partGroup=new THREE.Group(); scene.add(partGroup);
     const hullHandles=[]; const midHandles=[];
-    const hGeo=new THREE.SphereGeometry(1.3,16,16);
-    const mGeo=new THREE.SphereGeometry(0.85,14,14);
+    const hGeo=new THREE.SphereGeometry(1.4,16,16);
+    const mGeo=new THREE.SphereGeometry(1.0,14,14);
     const HANDLE_COL=0xffb24d, HANDLE_HOT=0xfff1c0, MID_COL=0x47d18a;
     // Reconcile the two handle rings to the current vertex count: one orange handle per
     // vertex (drag to move / shift-click to delete) and one green handle per edge midpoint
@@ -594,20 +676,24 @@ window.GUN_SOUNDS = {
       while(midHandles.length<hull.length){ const m=new THREE.Mesh(mGeo,new THREE.MeshBasicMaterial({color:MID_COL,transparent:true,opacity:0.72})); scene.add(m); midHandles.push(m); }
       while(midHandles.length>hull.length){ const m=midHandles.pop(); scene.remove(m); m.material.dispose(); }
       for(let i=0;i<hull.length;i++){ hullHandles[i].position.set(hull[i][0],0.2,hull[i][1]);
-        const a=hull[i], b=hull[(i+1)%hull.length]; midHandles[i].position.set((a[0]+b[0])/2,0.35,(a[1]+b[1])/2); }
+        const a=hull[i], b=hull[(i+1)%hull.length]; let mx=(a[0]+b[0])/2, mz=(a[1]+b[1])/2;
+        const bl=a[2]||0;   // ride the green handle out to the arc's apex so it stays grabbable
+        if(Math.abs(bl)>=0.02){ const n=edgeNormal(hull,i), L=Math.hypot(b[0]-a[0],b[1]-a[1]); mx+=n[0]*bl*L/2; mz+=n[1]*bl*L/2; }
+        midHandles[i].position.set(mx,0.35,mz); }
     }
     let selBox=null;
 
     function rebuildHull(){
-      const shape=shapeFrom(hull);
+      hullX=expandHull(hull);
+      const shape=shapeFrom(hullX);
       if(deckMesh){ scene.remove(deckMesh); disposeObj(deckMesh); }
-      deckMesh=makeHull(hull, hullProfile); scene.add(deckMesh);
+      deckMesh=makeHull(hullX, hullProfile); scene.add(deckMesh);
       if(bulwark){ scene.remove(bulwark); bulwark.geometry.dispose(); }
-      bulwark=makeBulwark(hull, 1.1); scene.add(bulwark);
+      bulwark=makeBulwark(hullX, 1.1); scene.add(bulwark);
       if(tintMesh){ scene.remove(tintMesh); tintMesh.geometry.dispose(); }
       tintMesh=new THREE.Mesh(new THREE.ShapeGeometry(shape), buildTint); tintMesh.rotation.x=-Math.PI/2; tintMesh.position.y=0.04; scene.add(tintMesh);
       if(hullOutline){ scene.remove(hullOutline); hullOutline.geometry.dispose(); }
-      const p=hull.map(v=>new THREE.Vector3(v[0],0.12,v[1])); p.push(p[0].clone());
+      const p=hullX.map(v=>new THREE.Vector3(v[0],0.12,v[1])); p.push(p[0].clone());
       hullOutline=new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(p), new THREE.LineBasicMaterial({color:0x35d0ff})); scene.add(hullOutline);
       rebuildHandles();
       updateLevelPlane();
@@ -625,7 +711,7 @@ window.GUN_SOUNDS = {
     function spanHit(l0,l1,m0,m1){ return l0<=m1 && m0<=l1; }   // two inclusive deck-ranges overlap
     function overlaps(x,z,w,d,skip,lvl,lvls){ lvl=lvl||0; lvls=lvls||1; const minx=x-w/2,maxx=x+w/2,minz=z-d/2,maxz=z+d/2; return partAABBs(skip).some(a=> spanHit(lvl,lvl+lvls-1, a.lvl,a.lvl+a.lvls-1) && aabbHit(a,minx,maxx,minz,maxz)); }
     function supportedBelow(x,z,w,d,skip,lvl){ if(!lvl) return true; const minx=x-w/2,maxx=x+w/2,minz=z-d/2,maxz=z+d/2; return partAABBs(skip).some(a=> a.lvl<=lvl-1 && a.lvl+a.lvls-1>=lvl-1 && aabbHit(a,minx,maxx,minz,maxz)); }
-    function cornersInside(x,z,w,d){ return [[x-w/2,z-d/2],[x+w/2,z-d/2],[x+w/2,z+d/2],[x-w/2,z+d/2]].every(c=>pointInPoly(c[0],c[1],hull)); }
+    function cornersInside(x,z,w,d){ const H=hullX||hull; return [[x-w/2,z-d/2],[x+w/2,z-d/2],[x+w/2,z+d/2],[x-w/2,z+d/2]].every(c=>pointInPoly(c[0],c[1],H)); }
     function updateSponson(pt){
       if(!pt.mesh) return;
       const old=pt.mesh.getObjectByName('sponson'); if(old){ pt.mesh.remove(old); old.geometry.dispose(); }
@@ -636,7 +722,7 @@ window.GUN_SOUNDS = {
     function partValid(def,x,z,skip,w,d,lvl){
       w=(w==null?def.w:w); d=(d==null?def.d:d); lvl=lvl||0; const lvls=def.lvls||1;
       // anchored = centre over the hull; the footprint MAY overhang the side as a sponson
-      if(!pointInPoly(x,z,hull)) return {ok:false,msg:def.name+' needs its centre over the deck to stay attached'};
+      if(!pointInPoly(x,z,hullX||hull)) return {ok:false,msg:def.name+' needs its centre over the deck to stay attached'};
       if(overlaps(x,z,w,d,skip,lvl,lvls)) return {ok:false,msg:'overlaps another part'};
       let note = cornersInside(x,z,w,d)?'':' — sponson, overhangs the side';
       if(lvl>0 && !supportedBelow(x,z,w,d,skip,lvl)) note=' — ⚠ unsupported (nothing on the deck below)';
@@ -659,12 +745,12 @@ window.GUN_SOUNDS = {
     }
     function segInt(a,b,c,d){ function ccw(p,q,r){return (r[1]-p[1])*(q[0]-p[0])>(q[1]-p[1])*(r[0]-p[0]);} return ccw(a,c,d)!==ccw(b,c,d)&&ccw(a,b,c)!==ccw(a,b,d); }
     function isSimple(p){ const n=p.length; for(let i=0;i<n;i++)for(let j=i+1;j<n;j++){const a=p[i],b=p[(i+1)%n],c=p[j],d=p[(j+1)%n]; if(a===c||a===d||b===c||b===d)continue; if(segInt(a,b,c,d))return false;} return true; }
-    function hullValid(p){ return polyArea(p)>=120 && isSimple(p); }
+    function hullValid(p){ const e=expandHull(p); return polyArea(e)>=120 && isSimple(e); }
     const OK='#7fe0a0', WARN='#ffd24d', BAD='#ff5a5a';
     function setRO(id,text,color){ const e=document.getElementById(id); e.textContent=text; if(color) e.style.color=color; }
     function refreshReadout(){
       const dm=DECK_MATS[deckMatKey];
-      const area=polyArea(hull);
+      const area=polyArea(hullX||hull);
       const partsMass=parts.reduce((s,p)=>s+p.mass,0);
       const deckMass=Math.round(area*dm.self);        // heavier decks cost speed
       const mass=partsMass+deckMass;                   // total displacement (parts + decking)
@@ -712,13 +798,14 @@ window.GUN_SOUNDS = {
     const mouse=new THREE.Vector2(); const groundPlane=new THREE.Plane(new THREE.Vector3(0,1,0),0);
     const statusEl=document.getElementById('status');
     let imode=null, dragCorner=-1, lastX=0,lastY=0, grab=null, orig=null;
+    let dragPre=null, dragDirty=false, hoverH=null;   // drag-undo bookkeeping + hovered handle
     function setMouse(e){ mouse.x=(e.clientX/innerWidth)*2-1; mouse.y=-(e.clientY/innerHeight)*2+1; }
     function planePoint(y){ ray.setFromCamera(mouse,camera); const pl=y?new THREE.Plane(new THREE.Vector3(0,1,0),-y):groundPlane; const p=new THREE.Vector3(); return ray.ray.intersectPlane(pl,p)?p:null; }
     function levelY(l){ return (l||0)*LEVEL_H; }
     function updateLevelPlane(){
       if(levelPlane){ scene.remove(levelPlane); levelPlane.geometry.dispose(); levelPlane=null; }
       if(curLevel<=0) return;                       // main deck already has its own tint
-      levelPlane=new THREE.Mesh(new THREE.ShapeGeometry(shapeFrom(hull)), levelPlaneMat);
+      levelPlane=new THREE.Mesh(new THREE.ShapeGeometry(shapeFrom(hullX||hull)), levelPlaneMat);
       levelPlane.rotation.x=-Math.PI/2; levelPlane.position.y=levelY(curLevel)+0.05; scene.add(levelPlane);
     }
     function setLevel(n){
@@ -747,47 +834,110 @@ window.GUN_SOUNDS = {
       refreshReadout();
       return v;
     }
+
+    // --- undo/redo: whole-design snapshots (same shape as the localStorage save) ---
+    const undoStack=[], redoStack=[];
+    function captureState(){ return { hull:hull.map(v=>v.slice()), deckMat:deckMatKey, hullProfile, levels:numLevels,
+      parts:parts.map(p=>({key:p.key,x:p.x,z:p.z,rot:!!p.rot,lvl:p.lvl||0})) }; }
+    function applyState(d){
+      parts.forEach(removePartMesh); parts=[]; selectPart(-1); stopPlacing();
+      if(d.hull && d.hull.length>=3) hull=d.hull.map(v=>v.slice());
+      if(d.deckMat && DECK_MATS[d.deckMat]){ deckMatKey=d.deckMat; document.getElementById('deckMatSel').value=deckMatKey; applyDeckMat(); }
+      if(d.hullProfile && HULL_PROFILES[d.hullProfile]){ hullProfile=d.hullProfile; document.getElementById('hullProfSel').value=hullProfile; }
+      (d.parts||[]).forEach(pp=>{ const def=DEFMAP[pp.key]; if(def){ const pt=Object.assign({},def,{x:pp.x,z:pp.z,lvl:pp.lvl||0}); if(pp.rot){ const t=pt.w; pt.w=pt.d; pt.d=t; pt.rot=true; } parts.push(pt); makePartMesh(pt); } });
+      numLevels=Math.max(d.levels||1, parts.reduce((m,p)=>Math.max(m,(p.lvl||0)+1),1));
+      rebuildHull(); setLevel(Math.min(curLevel,numLevels-1)); refreshReadout();
+    }
+    function updateUndoBtns(){ const u=document.getElementById('undoBtn'), r=document.getElementById('redoBtn'); if(u) u.disabled=!undoStack.length; if(r) r.disabled=!redoStack.length; }
+    function pushUndo(pre){ undoStack.push(pre||captureState()); if(undoStack.length>60) undoStack.shift(); redoStack.length=0; updateUndoBtns(); }
+    function undo(){ if(!undoStack.length){ setStatus('nothing to undo',false); return; } redoStack.push(captureState()); applyState(undoStack.pop()); setStatus('undid',true); updateUndoBtns(); }
+    function redo(){ if(!redoStack.length){ setStatus('nothing to redo',false); return; } undoStack.push(captureState()); applyState(redoStack.pop()); setStatus('redid',true); updateUndoBtns(); }
+    const ub=document.getElementById('undoBtn'), rb=document.getElementById('redoBtn');
+    if(ub) ub.addEventListener('click',undo);
+    if(rb) rb.addEventListener('click',redo);
+    updateUndoBtns();
+
     canvas.addEventListener('pointerdown', function(e){
       if(MODE!=='build') return;
       if(e.button!==0) return; setMouse(e); ray.setFromCamera(mouse,camera);
+      const grabPtr=()=>{ try{ canvas.setPointerCapture(e.pointerId); }catch(_){} };
       if(placingDef){
         const p=planePoint(levelY(curLevel)); if(!p) return; const gd=ghostDims();
+        const pre=captureState();
         const r=tryPlace(p.x,p.z,gd);
         let mirrored=false;
         if(r.ok && symMode && Math.abs(p.z)>1.2){ const rm=tryPlace(p.x,-p.z,gd); mirrored=rm.ok; }
+        if(r.ok) pushUndo(pre);
         setStatus(r.ok ? (r.msg+(mirrored?' + mirror':'')+' — keep placing or Esc') : r.msg, r.ok);
         return;
       }
-      // green midpoint handle -> sprout a new node on that edge and grab it straight away
+      // green midpoint handle -> plain drag sprouts a node · Ctrl-drag arcs the edge · Shift-click straightens
       const mh=ray.intersectObjects(midHandles); if(mh.length){
-        const ei=midHandles.indexOf(mh[0].object); const a=hull[ei], b=hull[(ei+1)%hull.length];
-        hull.splice(ei+1,0,[(a[0]+b[0])/2,(a[1]+b[1])/2]); rebuildHull();
-        imode='hullVertex'; dragCorner=ei+1; hullHandles[dragCorner].material.color.set(HANDLE_HOT);
-        setStatus('new node — drag to shape (shift-click a node to remove)',true); return; }
+        const ei=midHandles.indexOf(mh[0].object);
+        if(e.shiftKey||e.altKey){
+          if(hull[ei][2]){ pushUndo(); hull[ei][2]=0; rebuildHull(); setStatus('edge straightened',true); }
+          return;
+        }
+        if(e.ctrlKey||e.metaKey){
+          dragPre=captureState(); dragDirty=false;
+          imode='edgeArc'; dragCorner=ei; mh[0].object.material.color.set(HANDLE_HOT); grabPtr();
+          setStatus('arcing edge — drag out for an outcropping, in for a cove',true); return;
+        }
+        pushUndo();
+        const a=hull[ei], b=hull[(ei+1)%hull.length];
+        const nx=[mh[0].object.position.x, mh[0].object.position.z];   // sprout at the handle (arc apex if arced)
+        hull[ei][2]=0; hull.splice(ei+1,0,nx); rebuildHull();
+        imode='hullVertex'; dragCorner=ei+1; hullHandles[dragCorner].material.color.set(HANDLE_HOT); grabPtr();
+        setStatus('new node — drag to shape · Ctrl-drag a green dot to arc an edge',true); return; }
       // orange vertex handle -> shift/alt-click deletes it, plain click drags it
       const hh=ray.intersectObjects(hullHandles); if(hh.length){
         const vi=hullHandles.indexOf(hh[0].object);
         if(e.shiftKey||e.altKey){
           if(hull.length<=3){ setStatus('a hull needs at least 3 nodes',false); return; }
-          const cand=hull.slice(); cand.splice(vi,1);
-          if(hullValid(cand)){ hull.splice(vi,1); selectPart(-1); rebuildHull(); setStatus('node removed',true); }
+          const cand=hull.map(v=>v.slice()); cand.splice(vi,1);
+          if(hullValid(cand)){ pushUndo(); hull.splice(vi,1); selectPart(-1); rebuildHull(); setStatus('node removed',true); }
           else setStatus('can\'t remove — hull would self-cross or shrink too far',false);
           return;
         }
-        imode='hullVertex'; dragCorner=vi; hullHandles[vi].material.color.set(HANDLE_HOT); return; }
+        dragPre=captureState(); dragDirty=false;
+        imode='hullVertex'; dragCorner=vi; hullHandles[vi].material.color.set(HANDLE_HOT); grabPtr(); return; }
       const hits=ray.intersectObjects(partGroup.children, true); const part=partFromHit(hits,curLevel);
-      if(part){ const i=parts.indexOf(part); selectPart(i); imode='partMove'; grab=planePoint(levelY(part.lvl)); orig={x:parts[i].x,z:parts[i].z}; return; }
+      if(part){ const i=parts.indexOf(part); selectPart(i); dragPre=captureState(); dragDirty=false;
+        imode='partMove'; grab=planePoint(levelY(part.lvl)); orig={x:parts[i].x,z:parts[i].z}; grabPtr(); return; }
       if(selPart>=0) selectPart(-1);
       imode='orbit'; lastX=e.clientX; lastY=e.clientY;
     });
-    window.addEventListener('pointerup', function(){ if(MODE!=='build')return; if(imode==='hullVertex') hullHandles.forEach(h=>h.material.color.set(HANDLE_COL)); imode=null; dragCorner=-1; grab=null; orig=null; });
+    window.addEventListener('pointerup', function(e){ if(MODE!=='build')return;
+      if(imode==='hullVertex') hullHandles.forEach(h=>h.material.color.set(HANDLE_COL));
+      if(imode==='edgeArc') midHandles.forEach(h=>h.material.color.set(MID_COL));
+      if(dragDirty && dragPre){ pushUndo(dragPre); }   // one undo step per completed drag
+      dragPre=null; dragDirty=false;
+      try{ canvas.releasePointerCapture(e.pointerId); }catch(_){}
+      imode=null; dragCorner=-1; grab=null; orig=null; });
     window.addEventListener('pointermove', function(e){
       if(MODE!=='build') return;
       setMouse(e);
       if(placingDef){ const p=planePoint(levelY(curLevel)); if(p&&ghost){ ghost.position.set(p.x,levelY(curLevel),p.z); const gd=ghostDims(); const v=partValid(placingDef,p.x,p.z,-1,gd.w,gd.d,curLevel); setGhostValid(v.ok); } return; }
       if(imode==='orbit'){ azimuth-=(e.clientX-lastX)*0.006; polar=Math.max(0.001,Math.min(1.5,polar-(e.clientY-lastY)*0.006)); lastX=e.clientX; lastY=e.clientY; }
-      else if(imode==='hullVertex'){ const p=planePoint(); if(!p)return; const cand=hull.slice(); cand[dragCorner]=[p.x,p.z]; if(hullValid(cand)){ hull[dragCorner]=[p.x,p.z]; rebuildHull(); if(selBox)selBox.update(); setStatus('valid hull',true);} else setStatus('invalid — would self-cross or be too small',false); }
-      else if(imode==='partMove'&&grab){ const pt=parts[selPart]; const p=planePoint(levelY(pt.lvl)); if(!p)return; const dx=p.x-grab.x,dz=p.z-grab.z; const nx=orig.x+dx,nz=orig.z+dz; const v=partValid(pt,nx,nz,selPart,pt.w,pt.d,pt.lvl); if(v.ok){ pt.x=nx; pt.z=nz; syncPartMesh(pt); if(selBox)selBox.update(); setStatus('moved '+pt.name,true);} else setStatus(v.msg,false); }
+      else if(imode==='hullVertex'){ const p=planePoint(); if(!p)return; const cand=hull.map(v=>v.slice()); cand[dragCorner]=[p.x,p.z].concat(hull[dragCorner][2]?[hull[dragCorner][2]]:[]); if(hullValid(cand)){ hull[dragCorner][0]=p.x; hull[dragCorner][1]=p.z; dragDirty=true; rebuildHull(); if(selBox)selBox.update(); setStatus('valid hull',true);} else setStatus('invalid — would self-cross or be too small',false); }
+      else if(imode==='edgeArc'){ const p=planePoint(); if(!p)return;
+        const a=hull[dragCorner], b=hull[(dragCorner+1)%hull.length];
+        const n=edgeNormal(hull,dragCorner); const mx=(a[0]+b[0])/2, mz=(a[1]+b[1])/2;
+        const L=Math.hypot(b[0]-a[0],b[1]-a[1])||1;
+        let bl=((p.x-mx)*n[0]+(p.z-mz)*n[1])/(L/2);
+        bl=Math.max(-0.95,Math.min(1,bl)); if(Math.abs(bl)<0.06) bl=0;
+        const cand=hull.map(v=>v.slice()); cand[dragCorner][2]=bl;
+        if(hullValid(cand)){ hull[dragCorner][2]=bl; dragDirty=true; rebuildHull();
+          setStatus(bl?('edge arc '+Math.round(bl*100)+'% '+(bl>0?'out':'in')+' — release to keep'):'straight edge',true); }
+        else setStatus('invalid — arc would self-cross the hull',false); }
+      else if(imode==='partMove'&&grab){ const pt=parts[selPart]; const p=planePoint(levelY(pt.lvl)); if(!p)return; const dx=p.x-grab.x,dz=p.z-grab.z; const nx=orig.x+dx,nz=orig.z+dz; const v=partValid(pt,nx,nz,selPart,pt.w,pt.d,pt.lvl); if(v.ok){ if(nx!==pt.x||nz!==pt.z)dragDirty=true; pt.x=nx; pt.z=nz; syncPartMesh(pt); if(selBox)selBox.update(); setStatus('moved '+pt.name,true);} else setStatus(v.msg,false); }
+      else if(!imode){   // hover feedback: warm up whichever handle the cursor is over
+        ray.setFromCamera(mouse,camera);
+        const hitM=ray.intersectObjects(midHandles)[0], hitV=ray.intersectObjects(hullHandles)[0];
+        const hot=hitV?hitV.object:(hitM?hitM.object:null);
+        if(hot!==hoverH){ if(hoverH) hoverH.scale.setScalar(1); hoverH=hot; if(hoverH) hoverH.scale.setScalar(1.35); }
+        canvas.style.cursor = hot ? 'grab' : (partFromHit(ray.intersectObjects(partGroup.children,true),curLevel) ? 'pointer' : '');
+      }
     });
     window.addEventListener('wheel', function(e){ if(MODE!=='build')return; frustum=Math.max(24,Math.min(170,frustum*(1+Math.sign(e.deltaY)*0.1))); updateProjection(); }, {passive:true});
     window.addEventListener('keydown', function(e){
@@ -795,11 +945,13 @@ window.GUN_SOUNDS = {
       if(e.key==='r'||e.key==='R'){ azimuth=0.6; polar=0.5; frustum=70; updateProjection(); }
       if(e.key==='t'||e.key==='T'){ azimuth=0; polar=0.0005; }
       if(e.key==='Escape'){ stopPlacing(); setStatus('edit mode',true); }
+      if((e.ctrlKey||e.metaKey) && (e.key==='z'||e.key==='Z')){ e.preventDefault(); if(e.shiftKey) redo(); else undo(); return; }
+      if((e.ctrlKey||e.metaKey) && (e.key==='y'||e.key==='Y')){ e.preventDefault(); redo(); return; }
       if(e.key==='q'||e.key==='Q'){
         if(placingDef){ placeRot=!placeRot; buildGhost(); setStatus('rotated ghost — '+(placeRot?'90°':'0°'),true); }
-        else if(selPart>=0){ const pt=parts[selPart], nw=pt.d, nd=pt.w; const v=partValid(pt,pt.x,pt.z,selPart,nw,nd,pt.lvl); if(v.ok){ pt.w=nw; pt.d=nd; pt.rot=!pt.rot; removePartMesh(pt); makePartMesh(pt); if(selBox)scene.remove(selBox); selBox=new THREE.BoxHelper(pt.mesh,0xffee55); scene.add(selBox); setStatus('rotated '+pt.name,true);} else setStatus('no room to rotate here',false); }
+        else if(selPart>=0){ const pt=parts[selPart], nw=pt.d, nd=pt.w; const v=partValid(pt,pt.x,pt.z,selPart,nw,nd,pt.lvl); if(v.ok){ pushUndo(); pt.w=nw; pt.d=nd; pt.rot=!pt.rot; removePartMesh(pt); makePartMesh(pt); if(selBox)scene.remove(selBox); selBox=new THREE.BoxHelper(pt.mesh,0xffee55); scene.add(selBox); setStatus('rotated '+pt.name,true);} else setStatus('no room to rotate here',false); }
       }
-      if((e.key==='Delete'||e.key==='Backspace')&&selPart>=0){ removePartMesh(parts[selPart]); parts.splice(selPart,1); selectPart(-1); refreshReadout(); }
+      if((e.key==='Delete'||e.key==='Backspace')&&selPart>=0){ pushUndo(); removePartMesh(parts[selPart]); parts.splice(selPart,1); selectPart(-1); refreshReadout(); }
     });
 
     const pb=document.getElementById('partButtons');
@@ -832,7 +984,7 @@ window.GUN_SOUNDS = {
     })();
     renderParts();
     document.getElementById('editMode').addEventListener('click',()=>{ stopPlacing(); setStatus('edit mode',true); });
-    document.getElementById('delPart').addEventListener('click',()=>{ if(selPart<0)return; removePartMesh(parts[selPart]); parts.splice(selPart,1); selectPart(-1); refreshReadout(); });
+    document.getElementById('delPart').addEventListener('click',()=>{ if(selPart<0)return; pushUndo(); removePartMesh(parts[selPart]); parts.splice(selPart,1); selectPart(-1); refreshReadout(); });
 
     const SAVE_KEY='incursion_ship_v2';
     function serialize(){ return JSON.stringify({ hull, deckMat:deckMatKey, hullProfile, levels:numLevels, parts: parts.map(p=>({ key:p.key, x:p.x, z:p.z, rot:!!p.rot, lvl:p.lvl||0 })) }); }
@@ -840,36 +992,30 @@ window.GUN_SOUNDS = {
     function loadShip(){
       const s=localStorage.getItem(SAVE_KEY); if(!s){ setStatus('no saved ship found', false); return; }
       let d; try{ d=JSON.parse(s); }catch(err){ setStatus('save file corrupt', false); return; }
-      parts.forEach(removePartMesh); parts=[]; selectPart(-1);
-      if(d.hull && d.hull.length>=3) hull=d.hull.map(v=>v.slice());
-      if(d.deckMat && DECK_MATS[d.deckMat]){ deckMatKey=d.deckMat; document.getElementById('deckMatSel').value=deckMatKey; applyDeckMat(); }
-      if(d.hullProfile && HULL_PROFILES[d.hullProfile]){ hullProfile=d.hullProfile; document.getElementById('hullProfSel').value=hullProfile; }
-      rebuildHull();
-      (d.parts||[]).forEach(pp=>{ const def=DEFMAP[pp.key]; if(def){ const pt=Object.assign({},def,{x:pp.x,z:pp.z,lvl:pp.lvl||0}); if(pp.rot){ const t=pt.w; pt.w=pt.d; pt.d=t; pt.rot=true; } parts.push(pt); makePartMesh(pt); } });
-      numLevels=Math.max(d.levels||1, parts.reduce((m,p)=>Math.max(m,(p.lvl||0)+1),1));
-      setLevel(0);
-      refreshReadout(); setStatus('ship loaded', true);
+      pushUndo(); applyState(d); setLevel(0); setStatus('ship loaded', true);
     }
-    function clearShip(){ parts.forEach(removePartMesh); parts=[]; selectPart(-1); hull=[[-32,-8],[18,-8],[32,0],[18,8],[-32,8],[-34,0]]; deckMatKey='oak'; document.getElementById('deckMatSel').value='oak'; applyDeckMat(); hullProfile='flat'; document.getElementById('hullProfSel').value='flat'; document.getElementById('hullPresetSel').value=''; numLevels=1; setLevel(0); rebuildHull(); refreshReadout(); setStatus('new ship', true); }
+    function clearShip(){ pushUndo();
+      applyState({ hull:[[-32,-8],[18,-8],[32,0],[18,8],[-32,8],[-34,0]], deckMat:'oak', hullProfile:'flat', levels:1, parts:[] });
+      document.getElementById('hullPresetSel').value=''; setLevel(0); setStatus('new ship', true); }
     document.getElementById('saveShip').addEventListener('click', saveShip);
     document.getElementById('loadShip').addEventListener('click', loadShip);
     document.getElementById('clearShip').addEventListener('click', clearShip);
     document.getElementById('symBtn').addEventListener('click',function(){ symMode=!symMode; this.classList.toggle('on',symMode); setStatus(symMode?'symmetry ON — placements mirror port/starboard':'symmetry off',true); });
     document.getElementById('lvlUp').addEventListener('click',()=>setLevel(curLevel+1));
     document.getElementById('lvlDown').addEventListener('click',()=>setLevel(curLevel-1));
-    document.getElementById('lvlAdd').addEventListener('click',()=>{ numLevels++; setLevel(numLevels-1); setStatus('added deck '+numLevels+' — place parts up here',true); });
+    document.getElementById('lvlAdd').addEventListener('click',()=>{ pushUndo(); numLevels++; setLevel(numLevels-1); setStatus('added deck '+numLevels+' — place parts up here',true); });
     document.getElementById('lvlDel').addEventListener('click',()=>{
       if(numLevels<=1){ setStatus('can\'t remove the main deck',false); return; }
       const top=numLevels-1;
       if(parts.some(p=>(p.lvl||0)===top)){ setStatus('clear deck '+numLevels+' before removing it',false); return; }
-      numLevels--; setLevel(Math.min(curLevel,numLevels-1)); setStatus('removed the top deck',true);
+      pushUndo(); numLevels--; setLevel(Math.min(curLevel,numLevels-1)); setStatus('removed the top deck',true);
     });
     document.getElementById('deckMatSel').addEventListener('change', function(){
-      deckMatKey=this.value; applyDeckMat();   // mutates shared MAT.deckTop -> the deck cap updates live
+      pushUndo(); deckMatKey=this.value; applyDeckMat();   // mutates shared MAT.deckTop -> the deck cap updates live
       refreshReadout(); setStatus(DECK_MATS[deckMatKey].name+' decking — '+DECK_MATS[deckMatKey].cap+' kg/m²', true);
     });
     document.getElementById('hullProfSel').addEventListener('change', function(){
-      hullProfile=this.value; rebuildHull(); refreshReadout();
+      pushUndo(); hullProfile=this.value; rebuildHull(); refreshReadout();
       setStatus(HULL_PROFILES[hullProfile].name+' — '+HULL_PROFILES[hullProfile].trait, true);
     });
     const HULL_PRESETS = {
@@ -880,7 +1026,7 @@ window.GUN_SOUNDS = {
     };
     document.getElementById('hullPresetSel').addEventListener('change', function(){
       const p=HULL_PRESETS[this.value]; if(!p) return;
-      hull=p.map(v=>v.slice()); selectPart(-1); rebuildHull(); refreshReadout();
+      pushUndo(); hull=p.map(v=>v.slice()); selectPart(-1); rebuildHull(); refreshReadout();
       setStatus('loaded the '+this.options[this.selectedIndex].text+' hull shape', true);
     });
 
@@ -892,8 +1038,9 @@ window.GUN_SOUNDS = {
       scene, camera,
       onResize: updateProjection,
       update(t){ water.animate(t); updateCamera(); if(selBox)selBox.update(); },
-      getDesign(){ return { hull: hull.map(v=>v.slice()), deckMat: deckMatKey, hullProfile, levels: numLevels, parts: parts.map(p=>({ key:p.key, x:p.x, z:p.z, w:p.w, d:p.d, h:p.h, lvl:p.lvl||0 })) }; },
+      getDesign(){ return { hull: (hullX||expandHull(hull)).map(v=>v.slice()), deckMat: deckMatKey, hullProfile, levels: numLevels, parts: parts.map(p=>({ key:p.key, x:p.x, z:p.z, w:p.w, d:p.d, h:p.h, lvl:p.lvl||0 })) }; },
       partCount(){ return parts.length; },
+      loadDesign(d){ pushUndo(); applyState(d); },   // programmatic load (testing / presets)
       setStatus
     };
   })();
@@ -1059,12 +1206,13 @@ window.GUN_SOUNDS = {
       ship.parts.forEach(p=>{ const py=(p.lvl||0)*LEVEL_H;
         if(p.gun){ addCrew(p.x-1.7*f, py, p.z+(Math.random()-0.5)*1.2, 1.3, p); }            // gunner at the weapon
         if(p.key==='crew'){ for(let n=0;n<2;n++) addCrew(p.x+(Math.random()-0.5)*3, py, p.z+(Math.random()-0.5)*3, 4.5, null); }  // deck hands
-        if(p.name==='Bridge'){ addCrew(p.x, py, p.z, 1.4, p); }                                // watch officer
+        if(CONTROL_KEYS.includes(p.key)){ addCrew(p.x, py, p.z, 1.4, p); }                      // watch officer
       });
       ship.handsMax=ship.crew.length; ship.hands=ship.crew.length;
       return ship;
     }
     const AMMO_COST={ mg:1, bofors:2, naval:8 };
+    const CONTROL_KEYS=['bridge','conning','armbridge','flybridge'];   // any alive control part keeps the ship steerable
     function shipHasMag(ship){ return ship.parts.some(p=>p.key==='mag' && p.alive); }
     function fireMult(ship){   // undercrewed = fewer hands; browned-out = sluggish systems; casualties slow the guns
       const crewF = ship.crewNeed>0 ? Math.min(1, ship.crewCap/ship.crewNeed) : 1;
@@ -1123,7 +1271,8 @@ window.GUN_SOUNDS = {
       const tgt=new THREE.Vector3(t.x,t.h*0.6,t.z);
       const toT=new THREE.Vector3().subVectors(tgt,muzzle); const dist=toT.length(); const dir=toT.clone().normalize();
       const vel=dir.multiplyScalar(VIS); vel.y+=0.5*GRAVITY*(dist/VIS);
-      vel.x+=(Math.random()-0.5)*5; vel.y+=(Math.random()-0.5)*3; vel.z+=(Math.random()-0.5)*5;
+      const acc=gunPart.ship.parts.some(q=>q.key==='firedir'&&q.alive)?0.5:1;   // a live Fire Director halves the spread
+      vel.x+=(Math.random()-0.5)*5*acc; vel.y+=(Math.random()-0.5)*3*acc; vel.z+=(Math.random()-0.5)*5*acc;
       spawnProjectile(muzzle,vel,sel.foe,gunPart.ball.energyJ,gunPart.viz);
       flash(muzzle.x,muzzle.y,muzzle.z,0xfff0b0,0.7+gunPart.viz.r*3,0.08); gunPart.recoil=1; shake+=0.12+gunPart.viz.r*0.4;
       const msz=0.4+gunPart.viz.r*4, mdr=gunPart.facing*(3+Math.random()*3);
@@ -1162,8 +1311,8 @@ window.GUN_SOUNDS = {
         });
       });
     }
-    function crippled(ship){ const bridge=ship.parts.find(p=>p.name==='Bridge'); const guns=ship.parts.filter(p=>p.gun);
-      return (bridge && !bridge.alive) || (guns.length>0 && guns.every(g=>!g.alive)); }
+    function crippled(ship){ const ctrls=ship.parts.filter(p=>CONTROL_KEYS.includes(p.key)); const guns=ship.parts.filter(p=>p.gun);
+      return (ctrls.length>0 && ctrls.every(c=>!c.alive)) || (guns.length>0 && guns.every(g=>!g.alive)); }
     function checkOutcome(){ if(over) return; if(crippled(enemy)){ endBattle('VICTORY','#7fe0a0'); } else if(crippled(player)){ endBattle('DEFEAT','#ff6a6a'); } }
     function endBattle(text,color){ over=true; firing=false; setFireBtn();
       const b=document.getElementById('banner'); b.textContent=text; b.style.color=color; b.style.display='block';
@@ -1306,6 +1455,7 @@ window.GUN_SOUNDS = {
     renderer.render(A.scene, A.camera);
   }
   Editor.onResize(); Battle.onResize();
+  window.__IA = { Editor, Battle, showMode };   // dev/test hook: load designs + drive modes programmatically
   showMode('build');
   animate();
 })();
