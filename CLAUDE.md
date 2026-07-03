@@ -1,7 +1,8 @@
 # Incursion Assault
 
 A high-fantasy, top-down 2.5D open-world **warship-building + combat game**. Singleplayer,
-HTML/web, vanilla JS + **Three.js r128** (CDN, classic script, runs from `file://`). Art
+HTML/web, vanilla JS + **Three.js r128** (vendored inline as a classic script — no CDN, runs
+fully offline and from `file://`). Playable on desktop and touch/mobile. Art
 direction: Roblox-tier clean low-poly with strong shading. Design philosophy: **total player
 agency** (Cosmoteer-style) — prefer soft warnings over hard blocks. Satisfying weapons + sound
 design are the top "feel" priority.
@@ -24,10 +25,10 @@ audio is base64-inlined so no server is needed. Optional local server: `prototyp
 > a real browser.
 
 ## Editing `m5.html` — read this first
-- The file is **large (~6 MB)** because the gun-sound WAVs are inlined as base64 in one giant
-  `<script>window.GUN_SOUNDS={...}</script>` line near the top. **Never read/print that base64
-  line** — it will flood your context. Use grep to find line numbers, read narrow ranges, and edit
-  unique strings.
+- The file is **large (~6.8 MB)** because of two giant inlined `<script>` lines near the top:
+  the gun-sound WAVs as base64 (`window.GUN_SOUNDS={...}`) and the vendored **Three.js r128**
+  minified bundle. **Never read/print either megaline** — they will flood your context. Use grep
+  to find line numbers, read narrow ranges, and edit unique strings.
 - One big IIFE. Order: constants (`PART_DEFS`, `DEFMAP`, `SYS`, `MAT`, world physics, `HULL_PROFILES`)
   → shared model/geometry helpers (`makeRolePart`, `makeHull`, `makeBulwark`, `makeWater`) →
   **`Editor`** IIFE → **`Battle`** IIFE → controller. Top-level `MODE` var; each module owns its own
