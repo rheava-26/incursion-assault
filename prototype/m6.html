@@ -616,7 +616,7 @@ window.GUN_SOUNDS = {
     // --- arc outcroppings: hull[i]=[x,z,bulge] — bulge bows edge i→i+1 into a circular arc
     // (1 = full semicircle outward, negative = cove inward). All geometry/validity/battle use the
     // EXPANDED outline (arcs tessellated to points); the raw hull keeps its editable handles.
-    let hullX=null;   // cached expanded outline, refreshed in rebuildHull()
+    let hullX=expandHull(hull);   // cached expanded outline, refreshed in rebuildHull()
     function polySignedArea(p){ let s=0; for(let i=0;i<p.length;i++){ const a=p[i],b=p[(i+1)%p.length]; s+=a[0]*b[1]-b[0]*a[1]; } return s/2; }
     function edgeNormal(p,i){   // unit normal of edge i pointing OUT of the polygon
       const a=p[i], b=p[(i+1)%p.length]; const dx=b[0]-a[0], dz=b[1]-a[1], L=Math.hypot(dx,dz)||1;
@@ -683,8 +683,8 @@ window.GUN_SOUNDS = {
     }
     let selBox=null;
 
-    function rebuildHull(){
-      hullX=expandHull(hull);
+    function rebuildHull(preExpanded){
+      hullX=preExpanded||expandHull(hull);
       const shape=shapeFrom(hullX);
       if(deckMesh){ scene.remove(deckMesh); disposeObj(deckMesh); }
       deckMesh=makeHull(hullX, hullProfile); scene.add(deckMesh);
@@ -745,7 +745,8 @@ window.GUN_SOUNDS = {
     }
     function segInt(a,b,c,d){ function ccw(p,q,r){return (r[1]-p[1])*(q[0]-p[0])>(q[1]-p[1])*(r[0]-p[0]);} return ccw(a,c,d)!==ccw(b,c,d)&&ccw(a,b,c)!==ccw(a,b,d); }
     function isSimple(p){ const n=p.length; for(let i=0;i<n;i++)for(let j=i+1;j<n;j++){const a=p[i],b=p[(i+1)%n],c=p[j],d=p[(j+1)%n]; if(a===c||a===d||b===c||b===d)continue; if(segInt(a,b,c,d))return false;} return true; }
-    function hullValid(p){ const e=expandHull(p); return polyArea(e)>=120 && isSimple(e); }
+    function validateExpanded(e){ return polyArea(e)>=120 && isSimple(e); }
+    function hullValid(p){ return validateExpanded(expandHull(p)); }
     const OK='#7fe0a0', WARN='#ffd24d', BAD='#ff5a5a';
     function setRO(id,text,color){ const e=document.getElementById(id); e.textContent=text; if(color) e.style.color=color; }
     function refreshReadout(){
@@ -798,7 +799,7 @@ window.GUN_SOUNDS = {
     const mouse=new THREE.Vector2(); const groundPlane=new THREE.Plane(new THREE.Vector3(0,1,0),0);
     const statusEl=document.getElementById('status');
     let imode=null, dragCorner=-1, lastX=0,lastY=0, grab=null, orig=null;
-    let dragPre=null, dragDirty=false, hoverH=null;   // drag-undo bookkeeping + hovered handle
+    let dragPre=null, dragDirty=false, hoverH=null, lastHoverT=0;   // drag-undo bookkeeping + hovered handle
     function setMouse(e){ mouse.x=(e.clientX/innerWidth)*2-1; mouse.y=-(e.clientY/innerHeight)*2+1; }
     function planePoint(y){ ray.setFromCamera(mouse,camera); const pl=y?new THREE.Plane(new THREE.Vector3(0,1,0),-y):groundPlane; const p=new THREE.Vector3(); return ray.ray.intersectPlane(pl,p)?p:null; }
     function levelY(l){ return (l||0)*LEVEL_H; }
@@ -841,7 +842,10 @@ window.GUN_SOUNDS = {
       parts:parts.map(p=>({key:p.key,x:p.x,z:p.z,rot:!!p.rot,lvl:p.lvl||0})) }; }
     function applyState(d){
       parts.forEach(removePartMesh); parts=[]; selectPart(-1); stopPlacing();
-      if(d.hull && d.hull.length>=3) hull=d.hull.map(v=>v.slice());
+      imode=null; grab=null; orig=null; dragCorner=-1; dragPre=null; dragDirty=false;   // kill any in-flight drag
+      const src=d.hullRaw||d.hull;   // prefer raw handle+bulge hull (getDesign also ships the expanded one)
+      if(src && src.length>=3) hull=src.map(v=>v.slice());
+      hullX=expandHull(hull);        // refresh BEFORE part meshes: sponson checks read hullX
       if(d.deckMat && DECK_MATS[d.deckMat]){ deckMatKey=d.deckMat; document.getElementById('deckMatSel').value=deckMatKey; applyDeckMat(); }
       if(d.hullProfile && HULL_PROFILES[d.hullProfile]){ hullProfile=d.hullProfile; document.getElementById('hullProfSel').value=hullProfile; }
       (d.parts||[]).forEach(pp=>{ const def=DEFMAP[pp.key]; if(def){ const pt=Object.assign({},def,{x:pp.x,z:pp.z,lvl:pp.lvl||0}); if(pp.rot){ const t=pt.w; pt.w=pt.d; pt.d=t; pt.rot=true; } parts.push(pt); makePartMesh(pt); } });
@@ -883,9 +887,10 @@ window.GUN_SOUNDS = {
           imode='edgeArc'; dragCorner=ei; mh[0].object.material.color.set(HANDLE_HOT); grabPtr();
           setStatus('arcing edge — drag out for an outcropping, in for a cove',true); return;
         }
-        pushUndo();
-        const a=hull[ei], b=hull[(ei+1)%hull.length];
         const nx=[mh[0].object.position.x, mh[0].object.position.z];   // sprout at the handle (arc apex if arced)
+        const cand=hull.map(v=>v.slice()); cand[ei][2]=0; cand.splice(ei+1,0,nx.slice());
+        if(!hullValid(cand)){ setStatus('can\'t split here — straightening this arc would self-cross',false); return; }
+        pushUndo();
         hull[ei][2]=0; hull.splice(ei+1,0,nx); rebuildHull();
         imode='hullVertex'; dragCorner=ei+1; hullHandles[dragCorner].material.color.set(HANDLE_HOT); grabPtr();
         setStatus('new node — drag to shape · Ctrl-drag a green dot to arc an edge',true); return; }
@@ -919,7 +924,7 @@ window.GUN_SOUNDS = {
       setMouse(e);
       if(placingDef){ const p=planePoint(levelY(curLevel)); if(p&&ghost){ ghost.position.set(p.x,levelY(curLevel),p.z); const gd=ghostDims(); const v=partValid(placingDef,p.x,p.z,-1,gd.w,gd.d,curLevel); setGhostValid(v.ok); } return; }
       if(imode==='orbit'){ azimuth-=(e.clientX-lastX)*0.006; polar=Math.max(0.001,Math.min(1.5,polar-(e.clientY-lastY)*0.006)); lastX=e.clientX; lastY=e.clientY; }
-      else if(imode==='hullVertex'){ const p=planePoint(); if(!p)return; const cand=hull.map(v=>v.slice()); cand[dragCorner]=[p.x,p.z].concat(hull[dragCorner][2]?[hull[dragCorner][2]]:[]); if(hullValid(cand)){ hull[dragCorner][0]=p.x; hull[dragCorner][1]=p.z; dragDirty=true; rebuildHull(); if(selBox)selBox.update(); setStatus('valid hull',true);} else setStatus('invalid — would self-cross or be too small',false); }
+      else if(imode==='hullVertex'){ const p=planePoint(); if(!p)return; const cand=hull.map(v=>v.slice()); cand[dragCorner]=[p.x,p.z].concat(hull[dragCorner][2]?[hull[dragCorner][2]]:[]); const ex=expandHull(cand); if(validateExpanded(ex)){ hull[dragCorner][0]=p.x; hull[dragCorner][1]=p.z; dragDirty=true; rebuildHull(ex); if(selBox)selBox.update(); setStatus('valid hull',true);} else setStatus('invalid — would self-cross or be too small',false); }
       else if(imode==='edgeArc'){ const p=planePoint(); if(!p)return;
         const a=hull[dragCorner], b=hull[(dragCorner+1)%hull.length];
         const n=edgeNormal(hull,dragCorner); const mx=(a[0]+b[0])/2, mz=(a[1]+b[1])/2;
@@ -927,11 +932,13 @@ window.GUN_SOUNDS = {
         let bl=((p.x-mx)*n[0]+(p.z-mz)*n[1])/(L/2);
         bl=Math.max(-0.95,Math.min(1,bl)); if(Math.abs(bl)<0.06) bl=0;
         const cand=hull.map(v=>v.slice()); cand[dragCorner][2]=bl;
-        if(hullValid(cand)){ hull[dragCorner][2]=bl; dragDirty=true; rebuildHull();
+        const ex=expandHull(cand);
+        if(validateExpanded(ex)){ hull[dragCorner][2]=bl; dragDirty=true; rebuildHull(ex);
           setStatus(bl?('edge arc '+Math.round(bl*100)+'% '+(bl>0?'out':'in')+' — release to keep'):'straight edge',true); }
         else setStatus('invalid — arc would self-cross the hull',false); }
       else if(imode==='partMove'&&grab){ const pt=parts[selPart]; const p=planePoint(levelY(pt.lvl)); if(!p)return; const dx=p.x-grab.x,dz=p.z-grab.z; const nx=orig.x+dx,nz=orig.z+dz; const v=partValid(pt,nx,nz,selPart,pt.w,pt.d,pt.lvl); if(v.ok){ if(nx!==pt.x||nz!==pt.z)dragDirty=true; pt.x=nx; pt.z=nz; syncPartMesh(pt); if(selBox)selBox.update(); setStatus('moved '+pt.name,true);} else setStatus(v.msg,false); }
-      else if(!imode){   // hover feedback: warm up whichever handle the cursor is over
+      else if(!imode){   // hover feedback: warm up whichever handle the cursor is over (throttled)
+        if(e.timeStamp-lastHoverT<80) return; lastHoverT=e.timeStamp;
         ray.setFromCamera(mouse,camera);
         const hitM=ray.intersectObjects(midHandles)[0], hitV=ray.intersectObjects(hullHandles)[0];
         const hot=hitV?hitV.object:(hitM?hitM.object:null);
@@ -986,11 +993,11 @@ window.GUN_SOUNDS = {
     document.getElementById('editMode').addEventListener('click',()=>{ stopPlacing(); setStatus('edit mode',true); });
     document.getElementById('delPart').addEventListener('click',()=>{ if(selPart<0)return; pushUndo(); removePartMesh(parts[selPart]); parts.splice(selPart,1); selectPart(-1); refreshReadout(); });
 
-    const SAVE_KEY='incursion_ship_v2';
-    function serialize(){ return JSON.stringify({ hull, deckMat:deckMatKey, hullProfile, levels:numLevels, parts: parts.map(p=>({ key:p.key, x:p.x, z:p.z, rot:!!p.rot, lvl:p.lvl||0 })) }); }
+    const SAVE_KEY='incursion_ship_v3';   // v3: hull vertices may carry [x,z,bulge] arcs (m5 reads v2 — keep it untouched)
+    function serialize(){ return JSON.stringify(captureState()); }
     function saveShip(){ try{ localStorage.setItem(SAVE_KEY, serialize()); setStatus('ship saved', true); }catch(err){ setStatus('save failed: '+err.message, false); } }
     function loadShip(){
-      const s=localStorage.getItem(SAVE_KEY); if(!s){ setStatus('no saved ship found', false); return; }
+      const s=localStorage.getItem(SAVE_KEY)||localStorage.getItem('incursion_ship_v2'); if(!s){ setStatus('no saved ship found', false); return; }
       let d; try{ d=JSON.parse(s); }catch(err){ setStatus('save file corrupt', false); return; }
       pushUndo(); applyState(d); setLevel(0); setStatus('ship loaded', true);
     }
@@ -1038,7 +1045,7 @@ window.GUN_SOUNDS = {
       scene, camera,
       onResize: updateProjection,
       update(t){ water.animate(t); updateCamera(); if(selBox)selBox.update(); },
-      getDesign(){ return { hull: (hullX||expandHull(hull)).map(v=>v.slice()), deckMat: deckMatKey, hullProfile, levels: numLevels, parts: parts.map(p=>({ key:p.key, x:p.x, z:p.z, w:p.w, d:p.d, h:p.h, lvl:p.lvl||0 })) }; },
+      getDesign(){ return { hull: hullX.map(v=>v.slice()), hullRaw: hull.map(v=>v.slice()), deckMat: deckMatKey, hullProfile, levels: numLevels, parts: parts.map(p=>({ key:p.key, x:p.x, z:p.z, w:p.w, d:p.d, h:p.h, rot:!!p.rot, lvl:p.lvl||0 })) }; },
       partCount(){ return parts.length; },
       loadDesign(d){ pushUndo(); applyState(d); },   // programmatic load (testing / presets)
       setStatus
@@ -1206,7 +1213,7 @@ window.GUN_SOUNDS = {
       ship.parts.forEach(p=>{ const py=(p.lvl||0)*LEVEL_H;
         if(p.gun){ addCrew(p.x-1.7*f, py, p.z+(Math.random()-0.5)*1.2, 1.3, p); }            // gunner at the weapon
         if(p.key==='crew'){ for(let n=0;n<2;n++) addCrew(p.x+(Math.random()-0.5)*3, py, p.z+(Math.random()-0.5)*3, 4.5, null); }  // deck hands
-        if(CONTROL_KEYS.includes(p.key)){ addCrew(p.x, py, p.z, 1.4, p); }                      // watch officer
+        if(CONTROL_KEYS.includes(p.key)||p.key==='firedir'){ addCrew(p.x, py, p.z, 1.4, p); }   // watch officer / spotters
       });
       ship.handsMax=ship.crew.length; ship.hands=ship.crew.length;
       return ship;
