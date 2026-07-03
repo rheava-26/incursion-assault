@@ -10,9 +10,9 @@ editing rules — especially the giant-line warnings).*
 2. ✅ Crew as moving, uncoordinated units
 3. ✅ Airships / aircraft / ground units
 4. ✅ Magic integration
-5. ⬜ Broader world map (Centak Islands) — ship movement, commands, terrain
-6. ⬜ Structures, excavation, harbors (harbors gate what/how big you can build)
-7. ⬜ Supply lines + X4-style reactive economy
+5. ✅ Broader world map (Centak Islands) — ship movement, commands, terrain
+6. ✅ (scaffold) Structures, excavation, harbors (harbors gate what/how big you can build)
+7. ✅ (scaffold) Supply lines + X4-style reactive economy
 
 ## Done so far (each = one pushed commit)
 - **U0** `583cf5b` — m5→m6 fork; **three.js r128 vendored inline** (offline, no CDN);
@@ -35,7 +35,7 @@ editing rules — especially the giant-line warnings).*
   coordination); Magiartillery (mana-fed, ignores magazines), Shield Barrier (35% soak),
   Blink Drive (12% dodge).
 
-## U5 — Centak Islands world map (NEXT, design ready)
+## U5 — Centak Islands world map — ✅ SHIPPED as designed below
 Add a third module `World` IIFE next to Editor/Battle + `MODE==='world'`:
 - Own scene/ortho camera; big sea; islands = hand-authored `Polygon2D`s evoking the sketch
   map (Canis NW, Serds NE, circled central isle, Toles S, SW cluster, eastern isle=Centura);
@@ -50,12 +50,12 @@ Add a third module `World` IIFE next to Editor/Battle + `MODE==='world'`:
 - HTML: `#modeWorld` button + `.worldonly` panels (wstatus + faction legend); extend
   `showMode`/`animate`/resize to route the third module.
 
-## U6 — harbors/structures (after U5)
+## U6 — harbors — ✅ scaffold shipped (5 harbors, docking, tier caps hull area as soft warning via window.__DOCK; forts/excavation still open)
 Harbor entities on island coasts; docking at a harbor gates max hull area & available part
 categories by harbor tier (dry-dock rule); fort structures using the same part editor;
 terrain excavation stub (flatten/carve island polys) can come last.
 
-## U7 — economy scaffold
+## U7 — economy — ✅ scaffold shipped (faction freighters haul crystals mine→Dragau Market, stocks tick, raiding pays; trading UI + production chains still open)
 Resources (mana crystals, steel, fuel) at island mines; freighter AI ships haul between
 harbors; factions accumulate/spend; player can trade or raid the freighters. X4-style:
 everything physically shipped, no abstract tick.
