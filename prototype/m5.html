@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>Incursion Assault — Build &amp; Battle (m5)</title>
 <style>
   html, body { margin:0; height:100%; overflow:hidden; background:#0b1622;
     font-family:"Segoe UI", system-ui, sans-serif; color:#cfe0f0; }
-  canvas { display:block; }
+  canvas { display:block; touch-action:none; }
   .panel { position:fixed; background:rgba(10,20,32,0.66);
     border:1px solid rgba(120,160,200,0.25); border-radius:8px; }
   .hidden { display:none !important; }
@@ -71,6 +71,53 @@
   #banner { position:fixed; top:42%; left:50%; transform:translate(-50%,-50%); font-size:54px; font-weight:800;
     letter-spacing:3px; display:none; text-shadow:0 0 24px rgba(0,0,0,0.6); pointer-events:none; }
   #flash { position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; transition:opacity 0.05s linear; }
+
+  /* ===== mobile / touch on-screen controls ===== */
+  #helpToggle, #touchbar { display:none; }
+  #touchbar { top:auto; bottom:64px; left:50%; transform:translateX(-50%); padding:7px 8px;
+    gap:7px; z-index:6; }
+  #touchbar button { padding:9px 12px; font-size:15px; min-width:44px; }
+  #touchbar button.on { background:#5a1f1f; border-color:#ff6a6a; box-shadow:0 0 0 1px #ff6a6a inset; }
+  #helpToggle { position:fixed; top:12px; left:12px; z-index:6; padding:8px 11px; font-size:15px; }
+
+  @media (max-width:820px), (pointer:coarse) {
+    /* fingers need room */
+    button { padding:9px 12px; font-size:13px; }
+    #modebar { top:8px; padding:6px; gap:6px; }
+    #modebar button { padding:9px 15px; font-size:14px; }
+
+    /* editor: hide the wordy help behind an (i) toggle */
+    #helpToggle { display:block; }
+    #hud { display:none; left:8px; right:8px; top:56px; max-width:none; padding:11px 13px;
+      font-size:12px; max-height:52vh; overflow:auto; background:rgba(9,17,27,0.94); pointer-events:auto; }
+    body.helpOpen #hud { display:block; }
+
+    /* parts palette: right-side sheet, taller tap targets */
+    #palette { top:56px; right:8px; width:44vw; max-width:220px; max-height:44vh; padding:8px 9px; }
+    #palette button { padding:8px 9px; font-size:13px; }
+    #partCats .catChip { padding:6px 8px; font-size:14px; }
+
+    /* readout tucks under the mode bar, left */
+    #readout { top:56px; bottom:auto; left:8px; font-size:11px; padding:7px 9px; max-width:48vw; }
+
+    /* file/deck tools: wrap into a scrollable bottom strip */
+    #fileTools { left:8px; right:8px; transform:none; bottom:120px; flex-wrap:wrap;
+      justify-content:center; max-height:26vh; overflow:auto; }
+    #fileTools select { padding:7px 6px; }
+
+    /* inspect: centered card near the top when a part is picked */
+    #inspect { left:50%; right:auto; top:110px; bottom:auto; transform:translateX(-50%); width:60vw; max-width:280px; }
+
+    /* touch action bar visible in build */
+    #touchbar { display:flex; }
+
+    /* battle side panels: narrower + shorter so the sea stays visible */
+    .listpanel { width:38vw; max-width:180px; max-height:40vh; top:56px; }
+    #battlebar { left:8px; right:8px; bottom:14px; transform:none; flex-wrap:wrap;
+      justify-content:center; padding:8px; }
+    #battlebar input[type=range] { width:110px; }
+    #banner { font-size:34px; }
+  }
 </style>
 </head>
 <body>
@@ -80,6 +127,14 @@
 </div>
 
 <!-- ============ EDITOR UI ============ -->
+<button id="helpToggle" class="buildonly" title="show / hide help">ℹ Help</button>
+<div id="touchbar" class="panel buildonly">
+  <button id="tbRotate" title="rotate ghost / selected part (Q)">⟳ Rotate</button>
+  <button id="tbDelNode" title="tap a hull node to delete it">✕ Node</button>
+  <button id="tbTop" title="top-down view (T)">⌖ Top</button>
+  <button id="tbView" title="reset camera (R)">⟲ View</button>
+  <button id="tbEsc" title="stop placing (Esc)">■ Stop</button>
+</div>
 <div id="hud" class="panel buildonly">
   <h1>Incursion Assault — ship editor</h1>
   <div class="sub">No grid, no zones — just damageable role-parts. Shape the hull, place freely (parts can <b>overhang the sides as sponsons</b>), then hit <b>⚔ Battle</b>.</div>
@@ -88,6 +143,7 @@
   <div class="row">Click a part to inspect · drag to move · <kbd>Del</kbd> remove</div>
   <div class="row"><b style="color:#47d18a">Build up:</b> <kbd>＋deck</kbd> adds a level · <kbd>▲</kbd>/<kbd>▼</kbd> pick which deck · place a <b>Deck Platform</b>/<b>Superstructure</b> to raise a deck you build on top of</div>
   <div class="row"><kbd>Left-drag empty</kbd> orbit · <kbd>T</kbd> top · <kbd>R</kbd> reset</div>
+  <div class="row"><b style="color:#46c3ff">On touch:</b> one finger drags · two fingers pinch to zoom · use the bottom <b>⟳ Rotate / ✕ Node / Stop</b> bar</div>
   <div class="row" id="status">ready</div>
 </div>
 <div id="readout" class="panel buildonly">
@@ -705,6 +761,9 @@ window.GUN_SOUNDS = {
     const mouse=new THREE.Vector2(); const groundPlane=new THREE.Plane(new THREE.Vector3(0,1,0),0);
     const statusEl=document.getElementById('status');
     let imode=null, dragCorner=-1, lastX=0,lastY=0, grab=null, orig=null;
+    let delNodeMode=false;
+    const ptrMap=new Map(); let pinchLast=0;
+    function ptrDist(){ const v=[...ptrMap.values()]; if(v.length<2)return 0; return Math.hypot(v[0].x-v[1].x, v[0].y-v[1].y); }
     function setMouse(e){ mouse.x=(e.clientX/innerWidth)*2-1; mouse.y=-(e.clientY/innerHeight)*2+1; }
     function planePoint(y){ ray.setFromCamera(mouse,camera); const pl=y?new THREE.Plane(new THREE.Vector3(0,1,0),-y):groundPlane; const p=new THREE.Vector3(); return ray.ray.intersectPlane(pl,p)?p:null; }
     function levelY(l){ return (l||0)*LEVEL_H; }
@@ -742,6 +801,8 @@ window.GUN_SOUNDS = {
     }
     canvas.addEventListener('pointerdown', function(e){
       if(MODE!=='build') return;
+      if(e.pointerType==='touch'){ ptrMap.set(e.pointerId,{x:e.clientX,y:e.clientY});
+        if(ptrMap.size>=2){ imode='pinch'; pinchLast=ptrDist(); grab=null; return; } }
       if(e.button!==0) return; setMouse(e); ray.setFromCamera(mouse,camera);
       if(placingDef){
         const p=planePoint(levelY(curLevel)); if(!p) return; const gd=ghostDims();
@@ -760,7 +821,7 @@ window.GUN_SOUNDS = {
       // orange vertex handle -> shift/alt-click deletes it, plain click drags it
       const hh=ray.intersectObjects(hullHandles); if(hh.length){
         const vi=hullHandles.indexOf(hh[0].object);
-        if(e.shiftKey||e.altKey){
+        if(e.shiftKey||e.altKey||delNodeMode){
           if(hull.length<=3){ setStatus('a hull needs at least 3 nodes',false); return; }
           const cand=hull.slice(); cand.splice(vi,1);
           if(hullValid(cand)){ hull.splice(vi,1); selectPart(-1); rebuildHull(); setStatus('node removed',true); }
@@ -773,9 +834,11 @@ window.GUN_SOUNDS = {
       if(selPart>=0) selectPart(-1);
       imode='orbit'; lastX=e.clientX; lastY=e.clientY;
     });
-    window.addEventListener('pointerup', function(){ if(MODE!=='build')return; if(imode==='hullVertex') hullHandles.forEach(h=>h.material.color.set(HANDLE_COL)); imode=null; dragCorner=-1; grab=null; orig=null; });
+    window.addEventListener('pointerup', function(e){ if(MODE!=='build')return; if(e&&e.pointerType==='touch') ptrMap.delete(e.pointerId); if(imode==='pinch'){ if(ptrMap.size<2){ imode=null; pinchLast=0; } return; } if(imode==='hullVertex') hullHandles.forEach(h=>h.material.color.set(HANDLE_COL)); imode=null; dragCorner=-1; grab=null; orig=null; });
     window.addEventListener('pointermove', function(e){
       if(MODE!=='build') return;
+      if(e.pointerType==='touch'&&ptrMap.has(e.pointerId)) ptrMap.set(e.pointerId,{x:e.clientX,y:e.clientY});
+      if(imode==='pinch'){ if(ptrMap.size>=2){ const d=ptrDist(); if(pinchLast>0&&d>0){ frustum=Math.max(24,Math.min(170,frustum*pinchLast/d)); updateProjection(); } pinchLast=d; } return; }
       setMouse(e);
       if(placingDef){ const p=planePoint(levelY(curLevel)); if(p&&ghost){ ghost.position.set(p.x,levelY(curLevel),p.z); const gd=ghostDims(); const v=partValid(placingDef,p.x,p.z,-1,gd.w,gd.d,curLevel); setGhostValid(v.ok); } return; }
       if(imode==='orbit'){ azimuth-=(e.clientX-lastX)*0.006; polar=Math.max(0.001,Math.min(1.5,polar-(e.clientY-lastY)*0.006)); lastX=e.clientX; lastY=e.clientY; }
@@ -825,6 +888,15 @@ window.GUN_SOUNDS = {
     })();
     renderParts();
     document.getElementById('editMode').addEventListener('click',()=>{ stopPlacing(); setStatus('edit mode',true); });
+    // on-screen touch controls (mirror the keyboard shortcuts)
+    const _tb=(id,fn)=>{ const el=document.getElementById(id); if(el) el.addEventListener('click',fn); };
+    _tb('tbRotate',()=>{ if(placingDef){ placeRot=!placeRot; buildGhost(); setStatus('rotated ghost — '+(placeRot?'90°':'0°'),true); }
+      else if(selPart>=0){ const pt=parts[selPart], nw=pt.d, nd=pt.w; const v=partValid(pt,pt.x,pt.z,selPart,nw,nd,pt.lvl); if(v.ok){ pt.w=nw; pt.d=nd; pt.rot=!pt.rot; removePartMesh(pt); makePartMesh(pt); if(selBox)scene.remove(selBox); selBox=new THREE.BoxHelper(pt.mesh,0xffee55); scene.add(selBox); setStatus('rotated '+pt.name,true);} else setStatus('no room to rotate here',false); }
+      else setStatus('pick a part or start placing, then Rotate',false); });
+    _tb('tbTop',()=>{ azimuth=0; polar=0.0005; });
+    _tb('tbView',()=>{ azimuth=0.6; polar=0.5; frustum=70; updateProjection(); });
+    _tb('tbEsc',()=>{ stopPlacing(); setStatus('edit mode',true); });
+    _tb('tbDelNode',function(){ delNodeMode=!delNodeMode; this.classList.toggle('on',delNodeMode); setStatus(delNodeMode?'delete-node mode — tap a hull node to remove it':'delete-node off',true); });
     document.getElementById('delPart').addEventListener('click',()=>{ if(selPart<0)return; removePartMesh(parts[selPart]); parts.splice(selPart,1); selectPart(-1); refreshReadout(); });
 
     const SAVE_KEY='incursion_ship_v2';
@@ -1167,9 +1239,11 @@ window.GUN_SOUNDS = {
       if(shake>0.001){ camera.position.x+=(Math.random()-0.5)*shake*2; camera.position.y+=(Math.random()-0.5)*shake*2; } }
     function updateProjection(){ aspect=innerWidth/innerHeight; camera.left=-frustum*aspect/2; camera.right=frustum*aspect/2; camera.top=frustum/2; camera.bottom=-frustum/2; camera.updateProjectionMatrix(); }
     let bmode=null,lastX=0,lastY=0;
-    canvas.addEventListener('pointerdown',e=>{ if(MODE!=='battle')return; if(e.button===0){bmode='orbit';lastX=e.clientX;lastY=e.clientY;} });
-    window.addEventListener('pointerup',()=>{ if(MODE==='battle') bmode=null; });
-    window.addEventListener('pointermove',e=>{ if(MODE!=='battle')return; if(bmode==='orbit'){ azimuth-=(e.clientX-lastX)*0.006; polar=Math.max(0.05,Math.min(1.45,polar-(e.clientY-lastY)*0.006)); lastX=e.clientX; lastY=e.clientY; } });
+    const bptr=new Map(); let bpinch=0;
+    function bDist(){ const v=[...bptr.values()]; if(v.length<2)return 0; return Math.hypot(v[0].x-v[1].x, v[0].y-v[1].y); }
+    canvas.addEventListener('pointerdown',e=>{ if(MODE!=='battle')return; if(e.pointerType==='touch'){ bptr.set(e.pointerId,{x:e.clientX,y:e.clientY}); if(bptr.size>=2){ bmode='pinch'; bpinch=bDist(); return; } } if(e.button===0){bmode='orbit';lastX=e.clientX;lastY=e.clientY;} });
+    window.addEventListener('pointerup',e=>{ if(MODE!=='battle')return; if(e&&e.pointerType==='touch') bptr.delete(e.pointerId); if(bmode==='pinch'&&bptr.size>=2)return; bmode=null; });
+    window.addEventListener('pointermove',e=>{ if(MODE!=='battle')return; if(e.pointerType==='touch'&&bptr.has(e.pointerId)) bptr.set(e.pointerId,{x:e.clientX,y:e.clientY}); if(bmode==='pinch'){ if(bptr.size>=2){ const d=bDist(); if(bpinch>0&&d>0){ frustum=Math.max(60,Math.min(280,frustum*bpinch/d)); updateProjection(); } bpinch=d; } return; } if(bmode==='orbit'){ azimuth-=(e.clientX-lastX)*0.006; polar=Math.max(0.05,Math.min(1.45,polar-(e.clientY-lastY)*0.006)); lastX=e.clientX; lastY=e.clientY; } });
     window.addEventListener('wheel',e=>{ if(MODE!=='battle')return; frustum=Math.max(60,Math.min(280,frustum*(1+Math.sign(e.deltaY)*0.1))); updateProjection(); },{passive:true});
     window.addEventListener('keydown',e=>{ if(MODE!=='battle')return; if(e.key==='r'||e.key==='R'){azimuth=0.55;polar=0.62;frustum=150;updateProjection();} if(e.key==='t'||e.key==='T'){azimuth=0;polar=0.0005;} if(e.code==='Space'){e.preventDefault();toggleFire();} });
 
@@ -1281,6 +1355,7 @@ window.GUN_SOUNDS = {
     document.querySelectorAll('.buildonly').forEach(el=>el.classList.toggle('hidden', m!=='build'));
     document.querySelectorAll('.battleonly').forEach(el=>el.classList.toggle('hidden', m!=='battle'));
   }
+  { const ht=document.getElementById('helpToggle'); if(ht) ht.addEventListener('click',()=>document.body.classList.toggle('helpOpen')); }
   document.getElementById('modeBuild').addEventListener('click',()=>showMode('build'));
   document.getElementById('modeBattle').addEventListener('click',()=>{
     if(Editor.partCount()===0){ Editor.setStatus('place at least one part before battling',false); return; }
