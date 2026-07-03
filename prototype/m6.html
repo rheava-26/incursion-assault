@@ -77,6 +77,7 @@
 <div id="modebar" class="panel">
   <button id="modeBuild" class="on">🔧 Build</button>
   <button id="modeBattle">⚔ Battle</button>
+  <button id="modeWorld">🗺 World</button>
 </div>
 
 <!-- ============ EDITOR UI ============ -->
@@ -165,6 +166,14 @@
   <button id="clearShip">New</button>
 </div>
 
+<!-- ============ WORLD UI ============ -->
+<div id="wstatus" class="panel worldonly hidden">The Scramble</div>
+<div id="wlegend" class="panel worldonly hidden" style="position:absolute;right:12px;top:64px;font-size:12px;line-height:1.7">
+  <b>The Centak Islands</b><br>
+  <span style="color:#c9503c">■</span> Hekani (airships) · <span style="color:#3f9bd0">■</span> Centura (hivemind)<br>
+  <span style="color:#b08a2f">■</span> Kolden (psionics) · <span style="color:#4faf6f">■</span> Toles Compact<br>
+  <span style="opacity:.7">Click sea = sail · click a ship in range = fight · Shift-click = pan · wheel = zoom</span>
+</div>
 <!-- ============ BATTLE UI ============ -->
 <div id="bstatus" class="panel battleonly hidden">press Open fire</div>
 <div id="enemyPanel" class="panel listpanel battleonly hidden"><h2>Enemy (mirror)</h2><div class="shipstat" id="enemyStat"></div><div id="enemyList"></div></div>
@@ -1545,6 +1554,7 @@ window.GUN_SOUNDS = {
           || (envs.length>0 && envs.every(e=>!e.alive)); }   // an airship with no bags left is going down
     function checkOutcome(){ if(over) return; if(crippled(enemy)){ endBattle('VICTORY','#7fe0a0'); } else if(crippled(player)){ endBattle('DEFEAT','#ff6a6a'); } }
     function endBattle(text,color){ over=true; firing=false; setFireBtn();
+      if(pub.onEnd) pub.onEnd(text==='VICTORY');
       const b=document.getElementById('banner'); b.textContent=text; b.style.color=color; b.style.display='block';
       setStatus(text==='VICTORY'?'enemy crippled — victory!':'your ship is crippled — defeat', text==='VICTORY'); }
 
@@ -1610,10 +1620,12 @@ window.GUN_SOUNDS = {
       else setStatus('your build vs '+vs+' — press Open fire ('+guns+' guns)',true);
     }
 
-    return {
+    const pub = {
       scene, camera, start,
       onResize: updateProjection,
       onEnter(){ lastT=0; },
+      onEnd: null,   // World hooks this to learn who won an engagement
+      setFoe(k){ if(k==='mirror'||ENEMY_PRESETS[k]){ enemyChoice=k; const sel=document.getElementById('enemySel'); if(sel) sel.value=k; } },
       update(t){
         const dt = lastT===0 ? 0 : Math.min(t-lastT,0.05); lastT=t; elapsed+=dt;
         water.animate(t);
@@ -1668,6 +1680,126 @@ window.GUN_SOUNDS = {
         updateCamera();
       }
     };
+    return pub;
+  })();
+
+  // ===========================================================================
+  // ============================ WORLD MAP MODULE =============================
+  // ============ the Centak Islands — "The Scramble" (open-world sail) ========
+  // ===========================================================================
+  const World = (function(){
+    const scene=new THREE.Scene();
+    let frustum=340, aspect=innerWidth/innerHeight;
+    const camera=new THREE.OrthographicCamera(-frustum*aspect/2,frustum*aspect/2,frustum/2,-frustum/2,0.1,3000);
+    lightScene(scene, 600);
+    const water=makeWater(1600,64,-1.2); scene.add(water.mesh);
+    // --- the archipelago, shapes evoking the designer's sketch map ---
+    const ISLES={
+      canis:   {name:'Canis',   pts:[[-330,-40],[-250,-110],[-160,-90],[-120,-140],[-40,-120],[-70,-50],[-150,-20],[-230,10],[-310,20]]},
+      serds:   {name:'Serds',   pts:[[60,-150],[160,-190],[260,-160],[310,-90],[260,-40],[170,-60],[100,-100]]},
+      central: {name:'Dragau',  pts:[[-20,10],[30,-10],[60,20],[40,60],[-10,60]]},
+      toles:   {name:'Toles',   pts:[[10,120],[50,100],[80,140],[50,180],[15,165]]},
+      east:    {name:'Eastern Isle', pts:[[200,40],[290,20],[330,80],[290,160],[210,150],[180,90]]},
+      sw1:     {name:'SW Chain', pts:[[-320,150],[-260,130],[-240,180],[-290,210],[-330,190]]},
+      sw2:     {name:'',        pts:[[-220,210],[-180,195],[-165,235],[-205,250]]},
+    };
+    const FACTIONS={
+      hekani:  {name:'Hekani',        color:0xc9503c, home:'canis',  foePreset:'skybarge'},
+      centura: {name:'Centura',       color:0x3f9bd0, home:'east',   foePreset:'cruiser'},
+      kolden:  {name:'Kolden',        color:0xb08a2f, home:'sw1',    foePreset:'glasscannon'},
+      toles:   {name:'Toles Compact', color:0x4faf6f, home:'toles',  foePreset:'gunboat'},
+    };
+    const sand=new THREE.MeshStandardMaterial({color:0x9aa06b,roughness:0.95,metalness:0.02});
+    Object.values(ISLES).forEach(isl=>{
+      const geo=new THREE.ExtrudeGeometry(shapeFrom(isl.pts),{depth:3.4,bevelEnabled:false});
+      const m=new THREE.Mesh(geo,sand); m.rotation.x=-Math.PI/2; m.position.y=0.2; m.castShadow=true; m.receiveShadow=true; scene.add(m);
+      isl.cx=isl.pts.reduce((s,p)=>s+p[0],0)/isl.pts.length; isl.cz=isl.pts.reduce((s,p)=>s+p[1],0)/isl.pts.length;
+    });
+    Object.values(FACTIONS).forEach(fc=>{
+      const isl=ISLES[fc.home];
+      const ring=new THREE.Mesh(new THREE.RingGeometry(26,30,40), new THREE.MeshBasicMaterial({color:fc.color,transparent:true,opacity:0.35,side:THREE.DoubleSide}));
+      ring.rotation.x=-Math.PI/2; ring.position.set(isl.cx,0.35,isl.cz); scene.add(ring);
+      const pole=new THREE.Mesh(new THREE.CylinderGeometry(0.5,0.5,16,6), MAT.steel); pole.position.set(isl.cx,8,isl.cz); scene.add(pole);
+      const flag=new THREE.Mesh(new THREE.BoxGeometry(9,4.5,0.3), new THREE.MeshBasicMaterial({color:fc.color})); flag.position.set(isl.cx+5,13,isl.cz); scene.add(flag);
+    });
+    // --- player ship marker (rebuilt from the live design on enter) ---
+    let playerM=null, playerPos={x:-60,z:80}, dest=null, playerSpeed=8, playerAir=false, design=null;
+    function buildPlayerMarker(){
+      if(playerM){ scene.remove(playerM); disposeObj(playerM); }
+      design=Editor.getDesign();
+      playerAir = design.vehType==='airship';
+      const g=new THREE.Group();
+      const hullGeo=new THREE.ExtrudeGeometry(shapeFrom(design.hull),{depth:2.4,bevelEnabled:false});
+      const hm=new THREE.Mesh(hullGeo,new THREE.MeshStandardMaterial({color:0x7d8794,roughness:0.5,metalness:0.5}));
+      hm.rotation.x=-Math.PI/2; hm.scale.set(0.5,0.5,0.5); g.add(hm);
+      if(playerAir){ const bag=new THREE.Mesh(new THREE.SphereGeometry(1,14,10), new THREE.MeshStandardMaterial({color:0xe6ecf2,roughness:0.7}));
+        bag.scale.set(16,5.5,7); bag.position.y=10; g.add(bag); }
+      g.position.set(playerPos.x, playerAir?9:1.2, playerPos.z); scene.add(g); playerM=g;
+      const mass=design.parts.reduce((s,p)=>s+(DEFMAP[p.key]?DEFMAP[p.key].mass:0),0)+2000;
+      const thrust=design.parts.reduce((s,p)=>s+((SYS[p.key]||{}).thrust||0),0);
+      playerSpeed=Math.max(2, thrust/(mass/1000)*(HULL_PROFILES[design.hullProfile]||HULL_PROFILES.flat).speedMul)*0.9;
+    }
+    // --- faction patrol ships ---
+    let foes=[];
+    function spawnFoes(){
+      foes.forEach(fo=>{ scene.remove(fo.m); disposeObj(fo.m); }); foes=[];
+      Object.entries(FACTIONS).forEach(([key,fc])=>{
+        const isl=ISLES[fc.home];
+        for(let i=0;i<2;i++){
+          const g=new THREE.Group();
+          const b=new THREE.Mesh(new THREE.BoxGeometry(16,3,6), new THREE.MeshStandardMaterial({color:fc.color,roughness:0.55,metalness:0.4})); b.position.y=1.5; g.add(b);
+          const s2=new THREE.Mesh(new THREE.BoxGeometry(6,3,4), MAT.dark); s2.position.set(-2,4,0); g.add(s2);
+          const x=isl.cx+(Math.random()-0.5)*120, z=isl.cz+(Math.random()-0.5)*120;
+          g.position.set(x,1.2,z); scene.add(g);
+          foes.push({m:g, x, z, tx:x, tz:z, fac:key, alive:true, retarget:0, spd:5+Math.random()*3});
+        }
+      });
+    }
+    spawnFoes();
+    const wstatusEl=()=>document.getElementById('wstatus');
+    function wsay(msg,ok){ const el=wstatusEl(); if(el){ el.textContent=msg; el.style.color=ok===false?'#ff7a7a':'#cfe3f5'; } }
+    // --- camera: pan + zoom, near-top-down ---
+    const pivot=new THREE.Vector3(0,0,0); let pan=null;
+    function updateCamera(){ camera.position.set(pivot.x+120, 300, pivot.z+180); camera.up.set(0,1,0); camera.lookAt(pivot); }
+    function updateProjection(){ aspect=innerWidth/innerHeight; camera.left=-frustum*aspect/2; camera.right=frustum*aspect/2; camera.top=frustum/2; camera.bottom=-frustum/2; camera.updateProjectionMatrix(); }
+    const ray=new THREE.Raycaster(); const mouse=new THREE.Vector2(); const sea=new THREE.Plane(new THREE.Vector3(0,1,0),0);
+    function seaPoint(e){ mouse.x=(e.clientX/innerWidth)*2-1; mouse.y=-(e.clientY/innerHeight)*2+1; ray.setFromCamera(mouse,camera); const p=new THREE.Vector3(); return ray.ray.intersectPlane(sea,p)?p:null; }
+    let engaged=null;   // the foe we sailed into battle against
+    canvas.addEventListener('pointerdown',e=>{
+      if(MODE!=='world'||e.button!==0) return;
+      mouse.x=(e.clientX/innerWidth)*2-1; mouse.y=-(e.clientY/innerHeight)*2+1; ray.setFromCamera(mouse,camera);
+      const hit=ray.intersectObjects(foes.filter(f=>f.alive).map(f=>f.m),true)[0];
+      if(hit){ let fo=foes.find(f=>f.alive && (hit.object===f.m || hit.object.parent===f.m));
+        if(fo){ const dd=Math.hypot(fo.x-playerPos.x,fo.z-playerPos.z);
+          if(dd<=60){ engaged=fo; Battle.setFoe(FACTIONS[fo.fac].foePreset);
+            showMode('battle'); if(Battle.onEnter) Battle.onEnter(); Battle.start(Editor.getDesign());
+            return; }
+          wsay('too far to engage the '+FACTIONS[fo.fac].name+' ship — sail closer',false); return; } }
+      const p=seaPoint(e); if(p){ dest={x:p.x,z:p.z}; wsay('sailing… (click an enemy ship within range to engage)'); }
+      if(e.shiftKey&&p){ pivot.x=p.x; pivot.z=p.z; }
+    });
+    window.addEventListener('wheel',e=>{ if(MODE!=='world')return; frustum=Math.max(120,Math.min(700,frustum*(1+Math.sign(e.deltaY)*0.1))); updateProjection(); },{passive:true});
+    Battle.onEnd=v=>{ if(engaged && v){ engaged.alive=false; scene.remove(engaged.m); disposeObj(engaged.m); } engaged=null; };
+    return {
+      scene, camera, onResize:updateProjection,
+      onEnter(){ buildPlayerMarker(); wsay('The Scramble — click the sea to sail; get within range of a faction ship and click it to fight. Shift-click pans.'); },
+      update(t){
+        water.animate(t); updateCamera();
+        const dt=Math.min(0.05, t-(this._lt||t)); this._lt=t;
+        if(dest && playerM){ const dx=dest.x-playerPos.x,dz=dest.z-playerPos.z,d=Math.hypot(dx,dz);
+          if(d>1){ const st=Math.min(d,playerSpeed*dt*3); playerPos.x+=dx/d*st; playerPos.z+=dz/d*st;
+            playerM.position.set(playerPos.x,(playerAir?9:1.2)+Math.sin(t*2)*0.25,playerPos.z); playerM.rotation.y=Math.atan2(dx,dz)+Math.PI/2; }
+          else dest=null; }
+        foes.forEach(fo=>{ if(!fo.alive) return; fo.retarget-=dt;
+          const isl=ISLES[FACTIONS[fo.fac].home];
+          if(fo.retarget<=0){ fo.retarget=6+Math.random()*8; fo.tx=isl.cx+(Math.random()-0.5)*140; fo.tz=isl.cz+(Math.random()-0.5)*140; }
+          const dx=fo.tx-fo.x,dz=fo.tz-fo.z,d=Math.hypot(dx,dz);
+          if(d>1){ const st=Math.min(d,fo.spd*dt); fo.x+=dx/d*st; fo.z+=dz/d*st; fo.m.position.set(fo.x,1.2+Math.sin(t*2+fo.x)*0.2,fo.z); fo.m.rotation.y=Math.atan2(dx,dz)+Math.PI/2; }
+        });
+        const near=foes.find(fo=>fo.alive && Math.hypot(fo.x-playerPos.x,fo.z-playerPos.z)<60);
+        if(near) wsay('⚔ '+FACTIONS[near.fac].name+' ship in range — click it to engage!');
+      }
+    };
   })();
 
   // ===========================================================================
@@ -1677,9 +1809,15 @@ window.GUN_SOUNDS = {
     MODE=m;
     document.getElementById('modeBuild').classList.toggle('on', m==='build');
     document.getElementById('modeBattle').classList.toggle('on', m==='battle');
+    document.getElementById('modeWorld').classList.toggle('on', m==='world');
     document.querySelectorAll('.buildonly').forEach(el=>el.classList.toggle('hidden', m!=='build'));
     document.querySelectorAll('.battleonly').forEach(el=>el.classList.toggle('hidden', m!=='battle'));
+    document.querySelectorAll('.worldonly').forEach(el=>el.classList.toggle('hidden', m!=='world'));
   }
+  document.getElementById('modeWorld').addEventListener('click',()=>{
+    if(Editor.partCount()===0){ Editor.setStatus('place at least one part before setting sail',false); return; }
+    showMode('world'); World.onEnter();
+  });
   document.getElementById('modeBuild').addEventListener('click',()=>showMode('build'));
   document.getElementById('modeBattle').addEventListener('click',()=>{
     if(Editor.partCount()===0){ Editor.setStatus('place at least one part before battling',false); return; }
@@ -1688,17 +1826,17 @@ window.GUN_SOUNDS = {
     Battle.start(Editor.getDesign());
   });
 
-  window.addEventListener('resize',()=>{ renderer.setSize(innerWidth,innerHeight); Editor.onResize(); Battle.onResize(); });
+  window.addEventListener('resize',()=>{ renderer.setSize(innerWidth,innerHeight); Editor.onResize(); Battle.onResize(); World.onResize(); });
 
   function animate(){
     requestAnimationFrame(animate);
     const t=performance.now()/1000;
-    const A = MODE==='build' ? Editor : Battle;
+    const A = MODE==='build' ? Editor : MODE==='world' ? World : Battle;
     A.update(t);
     renderer.render(A.scene, A.camera);
   }
-  Editor.onResize(); Battle.onResize();
-  window.__IA = { Editor, Battle, showMode };   // dev/test hook: load designs + drive modes programmatically
+  Editor.onResize(); Battle.onResize(); World.onResize();
+  window.__IA = { Editor, Battle, World, showMode };   // dev/test hook: load designs + drive modes programmatically
   showMode('build');
   animate();
 })();
