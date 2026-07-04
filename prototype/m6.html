@@ -344,6 +344,8 @@ window.GUN_SOUNDS = {
        ball:{muzzleMps:850, shellKg:0.90,   rpm:120}, viz:{r:0.16, len:5,   color:0xffe6a0}},
     {key:'naval',   name:'Naval Gun',        cat:'Weapon',     color:0xd24a4a, w:4,  d:6, h:3,   mass:3000, hp:260, highValue:false,
        ball:{muzzleMps:800, shellKg:14.1,   rpm:12},  viz:{r:0.32, len:8.5, color:0xfff0c0}},
+    {key:'rocket',  name:'Rocket Battery',   cat:'Weapon',     color:0xff7a2e, w:4,  d:4, h:3,   mass:1300, hp:150, highValue:false,
+       ball:{muzzleMps:360, shellKg:6, rpm:20}, viz:{r:0.24, len:2.4, color:0xffb24d}, salvo:6},
     {key:'catapult',name:'Aircraft Catapult',cat:'Aircraft',   color:0x9ad0ff, w:4,  d:8, h:2,   mass:2500, hp:200, highValue:false},
     {key:'msc',     name:'Storage Converter',cat:'Aircraft',   color:0xb06fe0, w:6,  d:6, h:4,   mass:1500, hp:240, highValue:true},
     {key:'dampener',name:'Inertial Dampener',cat:'Magic',      color:0x6fe0d8, w:4,  d:4, h:3.5, mass:900,  hp:200, highValue:false},
@@ -386,6 +388,7 @@ window.GUN_SOUNDS = {
     mg:      {power:-2,  ammoNeed:60,  crewNeed:1},
     bofors:  {power:-5,  ammoNeed:120, crewNeed:2},
     naval:   {power:-15, ammoNeed:200, crewNeed:3},
+    rocket:  {power:-6,  ammoNeed:180, crewNeed:2},   // ripple battery: cheap tubes, hungry for shells
     catapult:{power:-40, crewNeed:2, hangar:1},
     msc:     {power:-60, crewNeed:1, hangar:3},   // pocket-dimension hangar; loads the mana engines
     dampener:{power:-25, crewNeed:1},             // runway-free recovery; airspeed/range tax modeled later
@@ -803,6 +806,20 @@ window.GUN_SOUNDS = {
         box(w*0.3, h*0.4, d*0.5, MAT.dark, -w*0.18, h*0.5, 0);         // breech block
         const barrel=cyl(0.30,0.22, w*1.15, 14, MAT.barrel, w*0.5, h*0.6, 0); barrel.rotation.z=Math.PI/2;  // long tapering barrel
         const recup=cyl(0.15,0.15, w*0.55, 10, MAT.dark, w*0.18, h*0.73, 0); recup.rotation.z=Math.PI/2;    // recuperator cylinder
+        break; }
+      case 'rocket': {                                                // banked ripple-launcher: a pack of tubes on a trainable cradle
+        cyl(hw*0.72, hw*0.9, h*0.26, 16, MAT.steel, 0, h*0.13, 0);    // turntable base
+        box(w*0.4, h*0.36, d*0.7, MAT.dark, -w*0.14, h*0.4, 0);       // trainable cradle / trunnions
+        const pack=new THREE.Group(); const tr=0.24, tl=w*0.92;
+        for(let r=0;r<2;r++) for(let c=0;c<3;c++){
+          const tube=new THREE.Mesh(new THREE.CylinderGeometry(tr,tr,tl,10), MAT.barrel);
+          tube.rotation.z=Math.PI/2; tube.position.set(0, (r-0.5)*tr*2.3, (c-1)*tr*2.5); pack.add(tube);
+          const mouth=new THREE.Mesh(new THREE.CylinderGeometry(tr*0.6,tr*0.6,0.14,10), MAT.glow);
+          mouth.rotation.z=Math.PI/2; mouth.position.set(tl*0.5, (r-0.5)*tr*2.3, (c-1)*tr*2.5); pack.add(mouth);
+        }
+        pack.position.set(w*0.1, h*0.64, 0); pack.rotation.z=0.28;    // elevate the pack, muzzles facing +x
+        g.add(pack);
+        box(0.14, h*0.5, d*0.86, MAT.steel, -w*0.34, h*0.5, 0);       // rear brace plate
         break; }
       case 'catapult': {                                            // launch rails + a low-poly floatplane
         box(w*0.85, h*0.4, d, body, 0, h*0.2, 0);                   // catapult bed
@@ -1411,6 +1428,13 @@ window.GUN_SOUNDS = {
       const n=ctx.createBufferSource(); n.buffer=noiseBuf(0.35,1.6); const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.setValueAtTime(900,t); lp.frequency.exponentialRampToValueAtTime(220,t+0.3);
       const ng=ctx.createGain(); ng.gain.setValueAtTime(0.7,t); ng.gain.exponentialRampToValueAtTime(0.001,t+0.35); n.connect(lp).connect(ng).connect(master); n.start(t);
     }
+    function synthRocket(){ if(!ctx)return; const t=ctx.currentTime;   // whooshing motor ignition + a low thump
+      const n=ctx.createBufferSource(); n.buffer=noiseBuf(0.55,0.5);
+      const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.setValueAtTime(280,t); bp.frequency.exponentialRampToValueAtTime(2000,t+0.4); bp.Q.value=0.7;
+      const ng=ctx.createGain(); ng.gain.setValueAtTime(0.0001,t); ng.gain.exponentialRampToValueAtTime(0.6,t+0.04); ng.gain.exponentialRampToValueAtTime(0.001,t+0.55);
+      n.connect(bp).connect(ng).connect(master); n.start(t);
+      const o=ctx.createOscillator(); o.type='sawtooth'; o.frequency.setValueAtTime(66,t); o.frequency.exponentialRampToValueAtTime(150,t+0.32);
+      const og=ctx.createGain(); og.gain.setValueAtTime(0.28,t); og.gain.exponentialRampToValueAtTime(0.001,t+0.4); o.connect(og).connect(master); o.start(t); o.stop(t+0.42); }
     function playGun(rate){ if(!ctx)return; const buf=currentGunKey?gunBuffers[currentGunKey]:null;
       if(buf){ const s=ctx.createBufferSource(); s.buffer=buf; s.playbackRate.value=(rate||1)*(0.96+Math.random()*0.08); s.connect(master); s.start(ctx.currentTime); } else synthGun(); }
     function playBoom(){ if(!ctx)return; const t=ctx.currentTime;
@@ -1455,7 +1479,7 @@ window.GUN_SOUNDS = {
         if(sp.key==='envelope'){   // mana forcefield bubble — visible while a mana engine lives
           const bub=new THREE.Mesh(new THREE.SphereGeometry(1,16,12), new THREE.MeshBasicMaterial({color:0x7fd8ff,transparent:true,opacity:0.13,depthWrite:false}));
           bub.scale.set(w*0.62, h*0.42, d*0.58); bub.position.y=h*0.62; model.add(bub); p.bubble=bub; }
-        if(gun){ p.ball=def.ball; p.viz=def.viz; p.visSpeed=def.ball.muzzleMps*VEL_SCALE; p.fireInt=60/def.ball.rpm; }
+        if(gun){ p.ball=def.ball; p.viz=def.viz; p.visSpeed=def.ball.muzzleMps*VEL_SCALE; p.fireInt=60/def.ball.rpm; p.salvo=def.salvo||0; p.rippleLeft=0; p.rippleNext=0; }
         if(p.hv){ p.marker=new THREE.Mesh(new THREE.OctahedronGeometry(1.1), new THREE.MeshBasicMaterial({color:0xff4444})); p.marker.position.set(p.x,py+p.h+2.4,p.z); scene.add(p.marker); }
         ship.parts.push(p);
       });
@@ -1486,7 +1510,7 @@ window.GUN_SOUNDS = {
       ship.handsMax=ship.crew.length; ship.hands=ship.crew.length;
       return ship;
     }
-    const AMMO_COST={ mg:1, bofors:2, naval:8 };
+    const AMMO_COST={ mg:1, bofors:2, naval:8, rocket:2 };   // rocket cost is per tube fired
     const CONTROL_KEYS=['bridge','conning','armbridge','flybridge'];   // any alive control part keeps the ship steerable
     function shipHasMag(ship){ return ship.parts.some(p=>p.key==='mag' && p.alive); }
     function fireMult(ship){   // undercrewed = fewer hands; browned-out = sluggish systems; casualties slow the guns
@@ -1526,9 +1550,9 @@ window.GUN_SOUNDS = {
     function renderLists(){ renderList(enemy,'enemyList'); renderList(player,'playerList'); }
     function inAABB(pos,p){ return pos.x>=p.x-p.w/2&&pos.x<=p.x+p.w/2&&pos.y>=p.y&&pos.y<=p.y+p.h&&pos.z>=p.z-p.d/2&&pos.z<=p.z+p.d/2; }   // honors deck level + airship altitude
 
-    function spawnProjectile(pos,vel,targetShip,energyJ,viz){
+    function spawnProjectile(pos,vel,targetShip,energyJ,viz,trail){
       const m=new THREE.Mesh(new THREE.CylinderGeometry(viz.r,viz.r,viz.len,6),additive(viz.color)); m.position.copy(pos); fx.add(m);
-      projectiles.push({m,pos:pos.clone(),prev:pos.clone(),vel:vel.clone(),life:4.5,initSpeed:vel.length(),energyJ,target:targetShip});
+      projectiles.push({m,pos:pos.clone(),prev:pos.clone(),vel:vel.clone(),life:4.5,initSpeed:vel.length(),energyJ,target:targetShip,trail:!!trail,trailT:0});
     }
     function despawnProj(i){ const p=projectiles[i]; fx.remove(p.m); p.m.geometry.dispose(); p.m.material.dispose(); projectiles.splice(i,1); }
     function pickTarget(fromShip, gx, gz){
@@ -1541,20 +1565,29 @@ window.GUN_SOUNDS = {
     }
     function fireGun(gunPart){
       const sel=pickTarget(gunPart.ship, gunPart.x, gunPart.z); if(!sel||!sel.part) return;
-      const t=sel.part; const VIS=gunPart.visSpeed;
+      const t=sel.part; const VIS=gunPart.visSpeed; const rkt=gunPart.key==='rocket';
       const muzzle=new THREE.Vector3(gunPart.x+3*gunPart.facing,gunPart.y+1.4+gunPart.h*0.4,gunPart.z);
       const tgt=new THREE.Vector3(t.x,t.y+t.h*0.6,t.z);
       const toT=new THREE.Vector3().subVectors(tgt,muzzle); const dist=toT.length(); const dir=toT.clone().normalize();
       const vel=dir.multiplyScalar(VIS); vel.y+=0.5*GRAVITY*(dist/VIS);
       const acc=gunPart.ship.parts.some(q=>q.key==='firedir'&&q.alive)?0.5:1;   // a live Fire Director halves the spread
-      vel.x+=(Math.random()-0.5)*5*acc; vel.y+=(Math.random()-0.5)*3*acc; vel.z+=(Math.random()-0.5)*5*acc;
-      spawnProjectile(muzzle,vel,sel.foe,gunPart.ball.energyJ,gunPart.viz);
-      flash(muzzle.x,muzzle.y,muzzle.z,0xfff0b0,0.7+gunPart.viz.r*3,0.08); gunPart.recoil=1; shake+=0.12+gunPart.viz.r*0.4;
+      const sc=rkt?9*acc:5*acc;   // unguided rockets fan out far more than aimed guns
+      vel.x+=(Math.random()-0.5)*sc; vel.y+=(Math.random()-0.5)*(rkt?5:3)*acc; vel.z+=(Math.random()-0.5)*sc;
+      if(rkt) vel.y+=6+Math.random()*4;   // extra loft — a high, showy arc that rains down on the target
+      spawnProjectile(muzzle,vel,sel.foe,gunPart.ball.energyJ,gunPart.viz,rkt);
+      flash(muzzle.x,muzzle.y,muzzle.z,rkt?0xffb060:0xfff0b0,0.7+gunPart.viz.r*3+(rkt?0.6:0),0.09); gunPart.recoil=1; shake+=0.12+gunPart.viz.r*0.4;
       const msz=0.4+gunPart.viz.r*4, mdr=gunPart.facing*(3+Math.random()*3);
       const ms=new THREE.Mesh(new THREE.SphereGeometry(msz,6,6), new THREE.MeshBasicMaterial({color:0x70757d,transparent:true,opacity:0.5,depthWrite:false}));
       ms.position.set(muzzle.x+gunPart.facing*0.8, muzzle.y, muzzle.z); fx.add(ms);
       effects.push({m:ms,life:0.6,max:0.6,upd:(k,dd)=>{ ms.material.opacity=0.5*(1-k); ms.scale.setScalar(1+k*2.5); ms.position.x+=mdr*dd; ms.position.y+=2*dd; }});
-      playGun(gunPart.key==='naval'?0.7:gunPart.key==='mg'?1.5:1.0);
+      if(rkt){   // a gout of exhaust flame + a smoke backblast behind the tubes
+        const bl=new THREE.Mesh(new THREE.SphereGeometry(0.9,8,8),additive(0xff7a2a)); bl.position.copy(muzzle); fx.add(bl);
+        effects.push({m:bl,life:0.22,max:0.22,upd:(k,dd)=>{ bl.material.opacity=1-k; bl.scale.setScalar(1+k*2); bl.position.x-=gunPart.facing*10*dd; }});
+        const bs=new THREE.Mesh(new THREE.SphereGeometry(1.1,8,8), new THREE.MeshBasicMaterial({color:0x8a8f96,transparent:true,opacity:0.55,depthWrite:false}));
+        bs.position.set(muzzle.x-gunPart.facing*2, muzzle.y, muzzle.z); fx.add(bs);
+        effects.push({m:bs,life:0.9,max:0.9,upd:(k,dd)=>{ bs.material.opacity=0.55*(1-k); bs.scale.setScalar(1+k*4); bs.position.x-=gunPart.facing*6*dd; bs.position.y+=4*dd; }});
+        synthRocket();
+      } else playGun(gunPart.key==='naval'?0.7:gunPart.key==='mg'?1.5:1.0);
     }
     function shipShield(ship){ return ship.parts.some(q=>q.key==='manaeng' && q.alive); }
     function hitPart(p, part){
@@ -1761,8 +1794,21 @@ window.GUN_SOUNDS = {
         water.animate(t);
         if(firing && !over && player && enemy){
           [player,enemy].forEach(ship=>{ const mult=fireMult(ship), hasMag=shipHasMag(ship);
-            ship.parts.forEach(p=>{ if(p.gun && p.alive && elapsed>=p.nextFire){
+            ship.parts.forEach(p=>{ if(!(p.gun && p.alive)) return;
+              if(p.rippleLeft>0){   // a rocket salvo is mid-ripple — walk tubes off one at a time
+                if(elapsed>=p.rippleNext && p.manned){
+                  const cost=AMMO_COST[p.key]||1;
+                  if(hasMag && ship.ammo>=cost){ fireGun(p); ship.ammo-=cost; } else p.rippleLeft=1;   // dry -> end the salvo
+                  p.rippleLeft--; p.rippleNext=elapsed+0.11;
+                  if(p.rippleLeft<=0) p.nextFire=elapsed+(p.fireInt/mult)*(0.85+Math.random()*0.3);   // reload after the salvo
+                }
+                return; }
+              if(elapsed<p.nextFire) return;
               if(!p.manned){ p.nextFire=elapsed+0.4; return; }   // nobody at the mount -> the gun waits
+              if(p.salvo){   // rocket battery — a full salvo needs a magazine + shells to kick off
+                const cost=AMMO_COST[p.key]||1;
+                if(hasMag && ship.ammo>=cost){ p.rippleLeft=p.salvo; p.rippleNext=elapsed; } else p.nextFire=elapsed+0.6;
+                return; }
               if(p.key==='magiart'){   // magiartillery draws on the mana engines, not the magazines
                 if(shipShield(ship)){ fireGun(p); p.nextFire=elapsed+(p.fireInt/mult)*(0.8+Math.random()*0.4); }
                 else p.nextFire=elapsed+0.8;
@@ -1770,7 +1816,7 @@ window.GUN_SOUNDS = {
               const cost=AMMO_COST[p.key]||1;
               if(hasMag && ship.ammo>=cost){ fireGun(p); ship.ammo-=cost; p.nextFire=elapsed+(p.fireInt/mult)*(0.8+Math.random()*0.4); }
               else { p.nextFire=elapsed+0.6; }   // dry feed: keep checking, stay silent
-            } }); });
+            }); });
         }
         if(player) updateShipStats(player,'playerStat'); if(enemy) updateShipStats(enemy,'enemyStat');
         [player,enemy].forEach(ship=>{ if(ship) ship.parts.forEach(p=>{ if(p.gun && p.grp){ p.recoil*=0.82; p.grp.position.x=p.x - p.recoil*2.2*p.facing; } }); });
@@ -1779,7 +1825,16 @@ window.GUN_SOUNDS = {
           const spd=p.vel.length(); if(spd>0) p.vel.addScaledVector(p.vel, -AIR_DRAG*spd*dt);   // thick-air drag
           p.vel.y-=GRAVITY*dt; p.pos.addScaledVector(p.vel,dt); p.m.position.copy(p.pos);
           p.m.quaternion.setFromUnitVectors(_UP, p.vel.clone().normalize());
-          p.life-=dt; tracer(p.prev,p.pos,0xffd86a,0.05);
+          p.life-=dt;
+          if(p.trail){   // rocket: a puff of exhaust smoke + a hot ember at the nozzle instead of a tracer streak
+            p.trailT-=dt;
+            if(p.trailT<=0){ p.trailT=0.028;
+              const s=new THREE.Mesh(new THREE.SphereGeometry(0.34,6,6), new THREE.MeshBasicMaterial({color:0xd6cdc0,transparent:true,opacity:0.55,depthWrite:false}));
+              s.position.copy(p.pos); fx.add(s);
+              effects.push({m:s,life:0.6+Math.random()*0.35,max:0.95,upd:(k,dd)=>{ s.material.opacity=0.5*(1-k); s.scale.setScalar(0.7+k*3); s.position.y+=1.5*dd; }});
+              const e2=new THREE.Mesh(new THREE.SphereGeometry(0.24,6,6), additive(0xff9a3c)); e2.position.copy(p.pos); fx.add(e2);
+              effects.push({m:e2,life:0.14,max:0.14,upd:k=>{ e2.material.opacity=1-k; e2.scale.setScalar(1-k*0.4); }}); }
+          } else tracer(p.prev,p.pos,0xffd86a,0.05);
           let hit=null; for(const part of p.target.parts){ if(part.alive&&inAABB(p.pos,part)){ hit=part; break; } }
           if(hit){ hitPart(p,hit); despawnProj(i); continue; }
           if(p.target.crew){ let hc=null; for(const c of p.target.crew){ if(c.alive){ const dx=c.x-p.pos.x, dz=c.z-p.pos.z; if(dx*dx+dz*dz<1.5 && p.pos.y>c.y-0.3 && p.pos.y<c.y+2.0){ hc=c; break; } } }
